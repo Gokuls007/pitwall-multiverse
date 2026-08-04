@@ -46,7 +46,7 @@ def _load(year: int, event_identifier: str):
 # product itself.
 EXPECTED = {
     "2019_mexican": (71, ["HAM", "VET", "BOT", "LEC", "ALB"], []),
-    "2019_japanese": (53, ["BOT", "VET", "HAM", "ALB", "SAI"], []),
+    "2018_bahrain": (57, ["VET", "BOT", "HAM", "GAS", "MAG"], []),
     "2019_monaco": (78, ["HAM", "VET", "BOT", "VER", "GAS"], []),
     "2019_hungarian": (70, ["HAM", "VER", "VET", "LEC", "SAI"], []),
     "2021_spanish": (66, ["HAM", "VER", "BOT", "LEC", "PER"], []),
@@ -226,6 +226,35 @@ def test_mad_outlier_detected_within_stint():
     outlier_row = annotated[annotated["LapNumber"] == 7].iloc[0]
     assert outlier_row["ExclusionReason"] == "outlier_mad"
     assert (annotated[annotated["LapNumber"] != 7]["ExclusionReason"].isna()).all()
+
+
+def test_sustained_pace_step_flagged_as_suspected_damage():
+    # 6 clean laps (~90s baseline), then a sustained ~5s step for the rest of
+    # the stint — e.g. a damaged front wing run before an unscheduled repair.
+    rows = [{"LapNumber": n, "LapTimeSeconds": 90.0 + (n - 2) * 0.05} for n in range(2, 8)]
+    rows += [{"LapNumber": n, "LapTimeSeconds": 95.5} for n in range(8, 16)]
+    laps = _synthetic_laps(rows)
+    annotated = cleaning.annotate_usability(laps)
+    clean = annotated[annotated["LapNumber"] < 8]
+    damaged = annotated[annotated["LapNumber"] >= 8]
+    assert (clean["ExclusionReason"].isna()).all()
+    assert (damaged["ExclusionReason"] == "suspected_damage_sustained_pace_loss").all()
+
+
+def test_gradual_tyre_cliff_not_flagged_as_damage():
+    # A legitimate tyre-cliff-style acceleration in degradation (spec 6.3):
+    # continuous at the cliff point (no discrete jump in value), just a
+    # steeper slope afterward — must not be mistaken for damage, even though
+    # cumulative pace loss over the whole stint eventually exceeds the
+    # absolute damage threshold on its own.
+    pre_cliff = [{"LapNumber": n, "LapTimeSeconds": 90.0 + (n - 2) * 0.05} for n in range(2, 14)]
+    cliff_value = pre_cliff[-1]["LapTimeSeconds"]
+    post_cliff = [
+        {"LapNumber": n, "LapTimeSeconds": cliff_value + (n - 13) * 0.15} for n in range(14, 20)
+    ]
+    laps = _synthetic_laps(pre_cliff + post_cliff)
+    annotated = cleaning.annotate_usability(laps)
+    assert (annotated["ExclusionReason"].isna()).all()
 
 
 def test_exclusion_summary_counts_all_reasons():

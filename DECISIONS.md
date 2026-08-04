@@ -637,3 +637,178 @@ this order (each is a distinct problem, not one fix cascading into the next):
   8.2's strategy-accuracy metric — "does the simulated undercut/overcut
   outcome match what really happened" — is exactly the test that would catch
   it).
+
+---
+
+## Third correction pass — race selection was still metrics-first, plus real cleaning and statistical gaps
+
+- **2026-08-04 — 2019 Japanese GP dropped: the third race picked on data
+  quality and narrative appeal first, found afterward to be decided by
+  something other than on-track racing.** Verified independently (searched,
+  not assumed): the chequered flag was shown a lap early due to a system
+  error, and under Article 43.2 the race was deemed finished when the leader
+  last crossed the line before the signal — the official classification is
+  based on lap 52 of a scheduled 53, not 53. Consequences land directly on
+  finishing order: Perez kept 2 points despite crashing on the lap that was
+  retroactively invalidated; positions immediately behind him shift as a
+  result. Ricciardo and Hulkenberg were also disqualified post-race
+  (technical infringements), and the catalogue's own "contested decision"
+  text ("Bottas's medium final stint beat Vettel's soft-soft") was
+  **constructed after the fact** to justify a race that had already been
+  selected on fitter metrics — the real story is a start-lap gain (P3 to P1)
+  and pace management to the flag, not a close strategic pit battle.
+  "Leave the contamination out of the catalogue framing," which is what the
+  second pass did for this race's lap-1 Leclerc/Verstappen incident, is
+  presentation — the contamination (the flag-timing error, specifically)
+  stays in the *data* regardless of how the catalogue text is worded, since
+  it corrupts `RaceSnapshot.total_laps` and the classification itself, not
+  just the narrative.
+
+- **2026-08-04 — Added a mechanical, first-pass hard-disqualifier screen
+  (`scripts/screen_race.py`), run *before* any data-quality check or
+  narrative write-up, for every future catalogue candidate.** Three races in
+  a row (Abu Dhabi, British GP, Japanese GP) were picked on fitter metrics
+  and narrative appeal first and only found to be rulebook-decided
+  afterward — the selection process itself was running in the wrong order.
+  Checks: time penalties, red flags (regex word-boundary matched — a naive
+  substring search for "RED FLAG" false-positives on "CHEQUERED FLAG", since
+  "cheque**red flag**" contains it literally), disqualifications, and early
+  (<=lap 3) retirements among top-5 grid starters. **Re-audited all four
+  surviving races (Hungary, Mexico, Monaco, Spanish) with this tool — all
+  four have real penalties or incidents somewhere in their data, and all
+  four still pass.** The refined criterion, reached by checking what
+  actually differs between Japan's contamination and routine stewarding: a
+  time penalty for a backmarker incident (e.g. Mexico's Kvyat, lap 71,
+  10s for a collision — Kvyat finishes well outside the top 10) is normal
+  motor racing and doesn't touch the featured story; a red flag that creates
+  the race, a race-control call that decides the winner, or a system error
+  that corrupts the official classification does. A blanket "any penalty
+  anywhere disqualifies" rule would exclude nearly every real Grand Prix —
+  penalties for routine infractions occur in almost all of them — so the
+  test is specifically whether the *winner, podium, or the decision points
+  being featured* were determined by the non-racing event, not whether one
+  exists anywhere in the field. Monaco 2019 has four penalties, including one
+  for Verstappen (5s, unsafe release, lap 22) that shuffled him from a
+  road-position of P2 to a classified P4 — checked specifically because it's
+  the closest call in the catalogue — but this happened mid-race, well
+  before and unconnected to the closing-laps pace battle for the *win* that
+  the catalogue entry is actually about (Hamilton defending the lead against
+  a charging Verstappen), so it stays.
+
+- **2026-08-04 — 2019 Japanese GP replaced with 2018 Bahrain GP, screened
+  disqualifier-first this time: clean by `screen_race.py`, then checked for
+  data quality, then a story written from what actually happened, not
+  invented.** Bahrain 2018: Ferrari's Vettel/Bottas controlled the race from
+  the front on a one-stop; Hamilton, starting P9 after a poor qualifying,
+  ran an alternate one-stop strategy (starting on the harder SOFT rather
+  than SUPERSOFT) and recovered to P3 — a real, verifiable strategy
+  narrative about whether matching the leaders' compound choice would have
+  helped or hurt from Hamilton's specific starting position. Data quality:
+  7% tyre-cell fallback fraction, 97% raw own-fit positive rate, fuel-effect
+  condition number 11.7 — among the best in the catalogue. (A backmarker
+  collision penalty and a lap-2 mechanical retirement from a grid-P4 starter
+  are both in the data; neither touches the front of the field or the
+  featured strategy — see the screening entry above.)
+
+- **2026-08-04 — Added a cleaning rule for damaged-car laps, then found the
+  first version produced 294 false positives on a single race and had to be
+  substantially tightened.** Spec 4.2's filters (in/out laps, SC laps, MAD
+  outliers within a stint) have a real gap: a car running consistently
+  degraded pace for many laps after unrepaired damage has that pace as its
+  own stint's norm, so MAD — which compares each lap only to its own stint's
+  median — sees nothing unusual. `cleaning._flag_sustained_pace_step` detects
+  a large (initially >=2s), sustained (>=3 consecutive laps) step relative to
+  a *rolling local* baseline (not the stint's first laps — comparing against
+  a fixed early-stint baseline would eventually flag ordinary, legitimate,
+  even accelerating tyre-cliff degradation too, since a long enough stint's
+  cumulative pace loss crosses any fixed absolute threshold on its own).
+  Checked directly on the current catalogue before trusting it: the initial
+  thresholds flagged 294 laps across 8 drivers on 2019 Monaco alone,
+  spanning nearly entire long stints from early tyre life onward. Inspecting
+  the actual laps ruled out the traffic hypothesis (gaps to the car ahead
+  were large, 6-8s, not consistent with being stuck behind someone) but
+  pointed at a different, very plausible explanation instead: deliberate,
+  team-instructed pace management on a one-stop strategy at a circuit where
+  overtaking is nearly impossible — a real, legitimate racing phenomenon
+  that can easily cost several seconds a lap for tens of laps, with exactly
+  the same shape as damage. Tightened to `_DAMAGE_STEP_THRESHOLD_S = 4.0`
+  and `_DAMAGE_MIN_CONSECUTIVE = 5`; re-verified this produces zero flagged
+  laps across all five current catalogue races (a defensible, conservative
+  outcome — the rule exists, is unit-tested against both a synthetic damage
+  case and a synthetic continuous tyre-cliff case, and doesn't misfire on
+  real data, but genuinely distinguishing damage from legitimate sustained
+  pace management from lap times alone is inherently hard; a flagged lap
+  should be read as "worth a human look," not a confirmed damage event).
+  Also worth recording precisely: the 2019 Japanese GP data that motivated
+  this rule doesn't actually show Leclerc's post-collision laps as an
+  obvious multi-second deficit on inspection (he pitted quickly, lap 3) — the
+  cleaning gap this rule addresses is real and general, but the specific
+  example that prompted it doesn't confirm as cleanly as described.
+
+- **2026-08-04 — The pooled fuel-effect condition number was answering the
+  wrong question; added a cluster-robust confidence interval instead.** A
+  well-conditioned matrix only shows the *pooling assumption* (shared
+  compound offsets and age slopes across every driver) makes estimation
+  numerically stable — it says nothing about whether real per-driver
+  degradation heterogeneity is being absorbed into the single shared fuel
+  term, or whether the data actually distinguishes the estimate from the
+  documented 0.05 s/lap prior. Added a 95% CI on the fuel coefficient
+  (`fit_diagnostics["fuel"]["ci_95"]`), and specifically a **cluster-robust**
+  one, not classic OLS: laps from the same driver aren't independent
+  observations (they share that day's car balance, personally-experienced
+  track evolution, etc.), so a naive OLS standard error — which effectively
+  treats the sample size as ~800 laps rather than ~20 drivers — understates
+  uncertainty. The cluster-robust SE came out roughly 2x the naive one.
+  Result, checked per race: only **2018 Bahrain GP's** CI (0.066-0.078)
+  excludes the 0.05 prior — the fuel effect there is genuinely fitted to a
+  distinguishably different value. The other four races' 95% CIs all
+  contain 0.05; the honest label for those is **"consistent with the
+  prior," not "fitted"** — the pooled regression converges to a number near
+  0.05 without the data actually ruling out 0.05 itself. This revises the
+  Phase 2 "fitted vs prior" table: `fuel_effect_s_per_lap` is fitted-and-
+  distinguishable on 1/5 races, prior-consistent on 4/5.
+
+- **2026-08-04 — Checked the actual post-correction offset-gap distribution,
+  not just the "none below the floor" confirmation from the second pass.**
+  61% of all adjacent-compound gaps across the current catalogue (66 of 109,
+  computed directly) sit at *exactly* `MIN_ADJACENT_COMPOUND_GAP_S = 0.15`
+  after the monotonic correction — meaning for the majority of driver/compound
+  pairs, the offset carries **zero information from that driver's own data**;
+  it is the declared prior floor, full stop, not a correction of a fitted
+  value. This is starker than the second pass's "hybrid, 58-80% of drivers
+  corrected" framing suggested, which counted *any* correction rather than
+  distinguishing "nudged slightly" from "pinned entirely to the prior
+  constant." Revises the "fitted vs prior" table again: compound-offset
+  *separation* should be read as **prior-dominated** (most gaps are the bare
+  floor constant), not merely "hybrid."
+
+- **2026-08-04 — Tightened `MAX_FALLBACK_FRACTION` from 0.6 to 0.40.** The
+  observed range across the current catalogue is 5-34% (Spanish lowest,
+  Monaco highest); a ceiling of 0.6 could never fail given that range and so
+  wasn't actually a regression guard, only a check that would fire on
+  something as broken as Australia's near-100%-fallback tyre model. This is
+  a different use of "having seen the data" than the raw-positive-rate bar
+  above it (which must stay pre-registered, not tuned to a specific result):
+  a ceiling picked to sit just above the observed operating range, so future
+  regressions get caught, is a legitimate regression-guard choice — not one
+  picked to make a borderline race pass.
+
+### Updated fitted-vs-prior accounting (supersedes the second pass's table)
+
+| Component | Status |
+|---|---|
+| `fuel_effect_s_per_lap` | **Fitted, distinguishable from prior** on 1/5 races (2018 Bahrain); **consistent with prior** (CI contains 0.05) on the other 4/5 — checked via cluster-robust CI, not condition number |
+| `base_pace_s` | Fitted for the large majority of drivers; teammate/field-median fallback for a small number per race |
+| `linear_deg_s_per_lap` (tyre slope) | Fitted for 66-95% of driver/compound cells depending on race; pooled or flat-zero fallback for the rest (ceiling now enforced at 40%) |
+| `base_offset_s` separation | **Prior-dominated** — 61% of all adjacent-compound gaps are exactly the 0.15s floor constant (zero data-driven information for those pairs); the rest retain some fitted signal |
+| `pit_lane_loss_s` | Fitted from real timing, downstream of the pace model above (inherits its bias, not independently validated) |
+| `pit_stop_stationary_s` | Prior (2.4s constant), every race |
+| `dirty_air` | Prior, every race (unfit after the traffic-conflation fix) |
+| `overtake_difficulty` | Fitted, acknowledged noisy single-race estimate |
+| `overtake_skill` / `defence_skill` | Prior (uniform 0.5), every driver, every race |
+| `sc_lap_time_multiplier` / `vsc_lap_time_multiplier` | Fitted only on races with an actual SC/VSC period; prior otherwise |
+
+The overall picture has moved further toward "mostly declared priors, with a
+handful of genuinely data-distinguishable exceptions" than the second pass's
+already-humbler framing. This should be reflected in Phase 8's README, not
+just here.

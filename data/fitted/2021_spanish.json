@@ -554,7 +554,7 @@
   "overtake_difficulty": 0.9044117647058824,
   "sc_lap_time_multiplier": 1.3741521510980441,
   "vsc_lap_time_multiplier": 1.35,
-  "fitted_at": "2026-08-04T04:31:07.460895+00:00",
+  "fitted_at": "2026-08-04T04:56:17.682490+00:00",
   "fit_diagnostics": {
     "per_driver_fallbacks": {
       "TSU": "Only 7 usable laps (<6); cannot fit independently (spec 6.2) \u2014 using teammate fallback below. Copied teammate GAS's fit."
@@ -592,6 +592,13 @@
       "n_drivers_pooled": 20,
       "n_laps_pooled": 1046,
       "r_squared": 0.8021706199847886,
+      "standard_error": 0.0017786206395813944,
+      "ci_95": [
+        0.049528436399333485,
+        0.05650062930649256
+      ],
+      "distinguishable_from_prior": false,
+      "ci_narrower_than_prior_vs_double_gap": true,
       "pooled_fit_rejected": false
     },
     "tyre_fallback_notes": {

@@ -554,7 +554,7 @@
   "overtake_difficulty": 0.9857142857142858,
   "sc_lap_time_multiplier": 1.2839831543515738,
   "vsc_lap_time_multiplier": 1.35,
-  "fitted_at": "2026-08-04T04:31:06.580605+00:00",
+  "fitted_at": "2026-08-04T04:56:16.767749+00:00",
   "fit_diagnostics": {
     "per_driver_fallbacks": {},
     "warnings": [],
@@ -589,6 +589,13 @@
       "n_drivers_pooled": 20,
       "n_laps_pooled": 1308,
       "r_squared": 0.4112757388804743,
+      "standard_error": 0.004970361077497929,
+      "ci_95": [
+        0.03845009451524366,
+        0.057933909939035536
+      ],
+      "distinguishable_from_prior": false,
+      "ci_narrower_than_prior_vs_double_gap": true,
       "pooled_fit_rejected": false
     },
     "tyre_fallback_notes": {

@@ -11,7 +11,8 @@ needs to fit on, so those laps stay usable and their gap-to-car-ahead is what
 
 Precedence when several rules could apply to the same lap (first match wins,
 checked in this order): first lap, in/out lap, null lap time, red flag,
-safety car / VSC, FastF1 inaccurate, MAD outlier. Everything else is usable.
+safety car / VSC, FastF1 inaccurate, sustained pace step (suspected damage),
+MAD outlier. Everything else is usable.
 """
 
 from __future__ import annotations
@@ -28,6 +29,24 @@ from pitwall.ingestion.safety_car import lap_is_red, lap_is_sc, lap_is_vsc
 # pace varies enormously by circuit (spec 4.2 point 5).
 _MAD_SCALE = 1.4826
 _MAD_THRESHOLD = 4.0
+
+# Sustained-pace-step (suspected damage) detection. Deliberately conservative
+# — tuned up after an initial version (2.0s / 3 laps) produced 294 false
+# positives across 8 drivers on 2019 Monaco, spanning almost entire long
+# stints from early tyre life onward. Checked directly: those laps don't
+# look like damage, they look like deliberate pace management on a one-stop
+# strategy at a circuit where overtaking is nearly impossible (spec 6.3's
+# cliff model and ordinary team-instructed tyre saving can both legitimately
+# cost several seconds a lap, sustained, with zero recovery for the rest of
+# a stint — the same shape a real damage event has). A materially higher bar
+# (magnitude and duration both) is needed to have any chance of separating
+# "car is physically compromised" from "team asked the driver to save tyres."
+# This is a real limitation: lap times alone may not reliably distinguish the
+# two even at this threshold (see DECISIONS.md) — treat a flagged lap as a
+# candidate worth a human look, not a confirmed damage event.
+_DAMAGE_STEP_THRESHOLD_S = 4.0
+_DAMAGE_MIN_CONSECUTIVE = 5
+_DAMAGE_MIN_BASELINE_LAPS = 4
 
 
 def _structural_reason(row: pd.Series) -> str | None:
@@ -73,6 +92,61 @@ def _flag_mad_outliers(laps: pd.DataFrame) -> pd.Series:
     return reason
 
 
+def _flag_sustained_pace_step(laps: pd.DataFrame) -> pd.Series:
+    """Flag laps after a sustained, discontinuous pace loss within a stint —
+    e.g. a driver running with front-wing or floor damage for many laps
+    before an unscheduled repair stop.
+
+    This is a gap in spec 4.2's own filters: in/out laps, SC laps, and MAD
+    outliers *within a stint* are all covered, but MAD compares each lap
+    against its own stint's median — a car that is consistently slow for the
+    rest of a stint after taking damage has that slow pace as its new stint
+    norm, so MAD sees nothing unusual. Found concretely investigating 2019
+    Japanese GP's Leclerc, who ran ~20 laps with a damaged front wing after a
+    lap-1 collision before pitting for a new one (that race was dropped from
+    the catalogue for unrelated reasons — a chequered-flag timing error — but
+    this cleaning gap is general, not specific to it, and those damaged laps
+    would otherwise have entered the pooled fuel regression and pooled
+    compound slopes as if they were clean green-flag pace).
+
+    Compares each candidate lap against a *rolling, local* baseline (the
+    preceding `_DAMAGE_MIN_BASELINE_LAPS` laps), not the stint's very first
+    laps — comparing against a fixed early-stint baseline would eventually
+    flag ordinary, legitimate degradation too, since a long enough stint's
+    cumulative pace loss crosses any fixed absolute threshold on its own. A
+    rolling local baseline tracks a gradual (even accelerating, spec 6.3
+    cliff-style) trend and only fires on a genuine discontinuity relative to
+    the laps immediately before it.
+
+    Only applied to laps that survived the structural checks. Groups smaller
+    than `_DAMAGE_MIN_BASELINE_LAPS + _DAMAGE_MIN_CONSECUTIVE` are left alone
+    — too short to establish a reliable rolling baseline.
+    """
+    reason = pd.Series(None, index=laps.index, dtype=object)
+    candidates = laps[laps["ExclusionReason"].isna()]
+
+    window = _DAMAGE_MIN_BASELINE_LAPS
+    for (_driver, _stint), group in candidates.groupby(["Driver", "Stint"]):
+        group = group.sort_values("LapNumber")
+        times = group["LapTimeSeconds"].astype(float).to_numpy()
+        n = len(times)
+        if n < window + _DAMAGE_MIN_CONSECUTIVE:
+            continue
+
+        step_start = None
+        for i in range(window, n - _DAMAGE_MIN_CONSECUTIVE + 1):
+            local_baseline = np.median(times[i - window : i])
+            upcoming = times[i : i + _DAMAGE_MIN_CONSECUTIVE]
+            if np.all(upcoming - local_baseline > _DAMAGE_STEP_THRESHOLD_S):
+                step_start = i
+                break
+
+        if step_start is not None:
+            reason.loc[group.index[step_start:]] = "suspected_damage_sustained_pace_loss"
+
+    return reason
+
+
 def annotate_usability(laps: pd.DataFrame) -> pd.DataFrame:
     """Return a copy of `laps` with `IsUsableForFitting` and `ExclusionReason` added.
 
@@ -83,6 +157,11 @@ def annotate_usability(laps: pd.DataFrame) -> pd.DataFrame:
     """
     laps = laps.copy()
     laps["ExclusionReason"] = laps.apply(_structural_reason, axis=1)
+
+    damage_reason = _flag_sustained_pace_step(laps)
+    laps["ExclusionReason"] = laps["ExclusionReason"].where(
+        laps["ExclusionReason"].notna(), damage_reason
+    )
 
     outlier_reason = _flag_mad_outliers(laps)
     laps["ExclusionReason"] = laps["ExclusionReason"].where(

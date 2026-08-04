@@ -248,7 +248,16 @@ def test_tyre_degradation_rates_are_positive(entry):
 # trust. A race where most cells fail the raw check, or where too large a
 # fraction of cells need a fallback at all, isn't well-fit no matter how
 # plausible the final numbers look — see DECISIONS.md's Australia writeup.
-MAX_FALLBACK_FRACTION = 0.6
+# Tightened from an initial 0.6, which no race in the catalogue could ever
+# fail (observed range across the current five races: 5-34%) and so wasn't
+# actually a regression guard. This is a different use of "having seen the
+# data" than the positive-rate bar below: it isn't picked to make a
+# borderline result pass, it's picked because a ceiling nothing can fail
+# isn't testing anything — 0.40 sits comfortably above the observed range
+# with headroom for ordinary variation, while still catching a race like
+# 2018 Australian GP (dropped from the catalogue after its shown tyre cells
+# were ~100% flat-zero fallback) immediately rather than silently.
+MAX_FALLBACK_FRACTION = 0.40
 # Chosen before looking at per-race results — well above the 50% a
 # pure-noise (zero true signal) population would produce, so it actually
 # tests for a real, positive, findable degradation signal rather than a coin

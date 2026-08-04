@@ -119,9 +119,57 @@ def fit_pooled_fuel_effect(
     fuel_coef_s_per_lap = -float(coef_by_col["lap_number"])
 
     fitted = X @ coef
-    sse = float(np.sum((y - fitted) ** 2))
+    residuals = y - fitted
+    sse = float(np.sum(residuals**2))
     sst = float(np.sum((y - y.mean()) ** 2))
     diagnostics["r_squared"] = 1.0 - sse / sst if sst > 0 else 0.0
+
+    # The condition number only says the pooling assumption (shared compound
+    # offsets/age slopes across all drivers) makes the matrix numerically
+    # stable — it says nothing about whether the *data* actually pins down
+    # the fuel coefficient, or whether real per-driver degradation
+    # heterogeneity (which the pooling assumption forces into this single
+    # shared term) is being absorbed into it. A standard error answers the
+    # question the condition number can't: is this estimate distinguishable
+    # from the documented prior, or just sitting near its starting region
+    # because the data can't move it?
+    #
+    # Cluster-robust (by driver), not classic OLS. Laps from the same driver
+    # are not independent observations — consecutive laps share unobserved,
+    # persistent effects (that day's car balance, track evolution the driver
+    # personally experienced, etc.) — so a naive OLS standard error
+    # (Var(beta) = sigma^2 * (X'X)^-1, treating every *lap* as independent)
+    # systematically understates uncertainty: the effective sample size for
+    # identifying one shared fuel coefficient is closer to the driver count
+    # (~20) than the lap count (~800). Used the cluster-robust "sandwich"
+    # estimator instead: V = (X'X)^-1 (sum_g X_g' u_g u_g' X_g) (X'X)^-1,
+    # summed over per-driver clusters g. This is deliberately the more
+    # conservative (wider) choice.
+    try:
+        xtx_inv = np.linalg.inv(X.T @ X)
+        driver_col = laps["Driver"].to_numpy()
+        meat = np.zeros((X.shape[1], X.shape[1]))
+        for driver in drivers:
+            mask = driver_col == driver
+            xu = X[mask].T @ residuals[mask]
+            meat += np.outer(xu, xu)
+        cluster_cov = xtx_inv @ meat @ xtx_inv
+        lap_idx = columns.index("lap_number")
+        se_fuel = float(np.sqrt(cluster_cov[lap_idx, lap_idx]))
+    except np.linalg.LinAlgError:
+        se_fuel = float("nan")
+
+    ci_half_width = 1.96 * se_fuel
+    ci_low, ci_high = fuel_coef_s_per_lap - ci_half_width, fuel_coef_s_per_lap + ci_half_width
+    diagnostics["standard_error"] = se_fuel
+    diagnostics["ci_95"] = (ci_low, ci_high)
+    # Can the data tell this estimate apart from the documented prior, or
+    # from a plausible alternative twice as large (0.05 vs 0.10 s/lap is the
+    # concrete range spec 6.4 itself discusses)? If the CI is wider than that
+    # gap, the honest label is "consistent with the prior," not "fitted" —
+    # the estimate hasn't been shown to have moved off its starting region.
+    diagnostics["distinguishable_from_prior"] = not (ci_low <= FALLBACK_FUEL_EFFECT_S_PER_LAP <= ci_high)
+    diagnostics["ci_narrower_than_prior_vs_double_gap"] = ci_half_width < 0.025
 
     low, high = PLAUSIBLE_FUEL_EFFECT_RANGE_S_PER_LAP
     if not (low <= fuel_coef_s_per_lap <= high) or condition_number > 1e6:

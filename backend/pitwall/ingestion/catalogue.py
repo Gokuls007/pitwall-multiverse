@@ -82,23 +82,22 @@ CATALOGUE: tuple[CatalogueEntry, ...] = (
         ),
     ),
     CatalogueEntry(
-        year=2019,
-        event_name="Japanese Grand Prix",
-        fastf1_event_identifier="Japan",
-        circuit="Suzuka Circuit",
+        year=2018,
+        event_name="Bahrain Grand Prix",
+        fastf1_event_identifier="Bahrain",
+        circuit="Bahrain International Circuit",
         contested_decision=(
-            "Vettel led from pole on a soft-soft two-stop, defending against Bottas, who "
-            "started third and undercut past him with a soft-medium split. Bottas won; "
-            "Vettel's choice to stay on softs for both stints rather than switching to a "
-            "medium is the strategic road not taken."
+            "Ferrari's Vettel and Bottas controlled the race from the front on a "
+            "supersoft one-stop. Hamilton, starting ninth after a poor qualifying, ran an "
+            "alternate one-stop (starting on the harder soft) and cut through the field to "
+            "finish third — the counterfactual is whether matching Ferrari's compound "
+            "choice would have gained or cost him time given his starting position."
         ),
         decision_points=(
             DecisionPointHint(
-                "pit_stop", "BOT", 17, "Bottas' first stop — the undercut that started the pass"
+                "compound", "HAM", 1, "Hamilton's starting compound (soft, not supersoft)"
             ),
-            DecisionPointHint(
-                "compound", "VET", 16, "Vettel's second stint compound choice (soft, not medium)"
-            ),
+            DecisionPointHint("pit_stop", "HAM", 25, "Hamilton's only stop, well after the leaders"),
         ),
     ),
     CatalogueEntry(
