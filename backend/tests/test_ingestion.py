@@ -37,12 +37,19 @@ def _load(year: int, event_identifier: str):
 # ---------------------------------------------------------------------------
 
 # (race_key, total_laps, [ordered finisher codes for P1..P5], [(code, status) for DNFs])
+#
+# Abu Dhabi 2021 is deliberately NOT in the catalogue: its outcome hinged on a
+# race-control judgement call (which lapped cars were waved through before the
+# one-lap restart), not a modellable strategy or physics decision (see
+# DECISIONS.md). It's kept as a hardcoded SC/VSC-extraction fixture below
+# instead — a good test case for ingestion, a bad case for the counterfactual
+# product itself.
 EXPECTED = {
-    "2021_abu_dhabi": (58, ["VER", "HAM", "SAI", "TSU", "GAS"], [("MAZ", "Illness")]),
     "2018_australian": (58, ["VET", "HAM", "RAI", "RIC", "ALO"], []),
     "2019_singapore": (61, ["VET", "LEC", "VER", "HAM", "BOT"], []),
     "2019_monaco": (78, ["HAM", "VET", "BOT", "VER", "GAS"], []),
     "2021_british": (52, ["HAM", "LEC", "BOT", "NOR", "RIC"], []),
+    "2019_hungarian": (70, ["HAM", "VER", "VET", "LEC", "SAI"], []),
 }
 
 

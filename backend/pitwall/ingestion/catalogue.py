@@ -43,19 +43,24 @@ class CatalogueEntry:
 
 CATALOGUE: tuple[CatalogueEntry, ...] = (
     CatalogueEntry(
-        year=2021,
-        event_name="Abu Dhabi Grand Prix",
-        fastf1_event_identifier="Abu Dhabi",
-        circuit="Yas Marina Circuit",
+        year=2019,
+        event_name="Hungarian Grand Prix",
+        fastf1_event_identifier="Hungary",
+        circuit="Hungaroring",
         contested_decision=(
-            "A late safety car for Latifi's crash (lap 53) bunched the field. Race "
-            "control's decision on which lapped cars were allowed to unlap themselves "
-            "before a one-lap restart directly set up Verstappen's pass on Hamilton for "
-            "the championship. The most argued-over single call in modern F1."
+            "Verstappen led comfortably on a long final stint. Mercedes gambled on a "
+            "second stop for Hamilton on lap 48 for a fresh set against Verstappen's "
+            "worn tyres, and Hamilton hunted him down to pass for the win in the closing "
+            "laps. A pure pit-strategy decision with no stewarding or incident involved — "
+            "the argument is entirely 'should Red Bull have covered the extra stop.'"
         ),
         decision_points=(
-            DecisionPointHint("safety_car", None, 53, "Shift or remove the lap-53 safety car"),
-            DecisionPointHint("pit_stop", "VER", 53, "Verstappen pits for softs under the SC"),
+            DecisionPointHint(
+                "pit_stop", "HAM", 48, "Hamilton's gamble second stop that set up the chase"
+            ),
+            DecisionPointHint(
+                "pit_stop", "VER", 67, "Verstappen's own late stop, arguably too late to react"
+            ),
         ),
     ),
     CatalogueEntry(

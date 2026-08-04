@@ -75,20 +75,39 @@ Newest entries at the bottom of each phase section.
   for a genuinely contested, well-known strategic decision, dry conditions
   (slicks-only, per the `had_rain` note above), and confirmed 20/20 driver
   coverage in both `laps` and `results`:
-  1. **2021 Abu Dhabi GP** — the season-deciding late safety car and the
-     lapped-cars-unlapping call. Also the spec's own recommended SC test case.
-  2. **2018 Australian GP** — Ferrari's near-instant pit call for Vettel during
+  1. **2018 Australian GP** — Ferrari's near-instant pit call for Vettel during
      Alonso's VSC-triggering stoppage, an almost-free stop that won him the race.
-  3. **2019 Singapore GP** — Vettel's undercut of his own polesitter teammate
+  2. **2019 Singapore GP** — Vettel's undercut of his own polesitter teammate
      Leclerc via an earlier pit stop.
-  4. **2019 Monaco GP** — Mercedes' tyre-set mix-up forcing Hamilton to defend
+  3. **2019 Monaco GP** — Mercedes' tyre-set mix-up forcing Hamilton to defend
      the entire remaining distance on one set of hards.
-  5. **2021 British GP** — the lap-1 Verstappen/Hamilton collision, red flag,
+  4. **2021 British GP** — the lap-1 Verstappen/Hamilton collision, red flag,
      and standing restart.
+  5. **2019 Hungarian GP** — Verstappen led on a long final stint; Mercedes
+     gambled a second stop for Hamilton on lap 48 for fresher rubber, and
+     Hamilton hunted him down to win. Zero SC/VSC periods in this race at
+     all — a clean pit-timing-only decision.
   Each entry's ingestion was verified individually: driver counts (20/20),
   finishing order for the top 5 (matches official classification), and DNF
   status/lap for any retirements — see `tests/test_ingestion.py::EXPECTED` and
   the corresponding parametrized tests.
+
+- **2026-08-03 — Abu Dhabi 2021 removed from the catalogue; kept only as a
+  hardcoded SC/VSC-extraction test fixture.** Originally catalogued for its
+  well-documented late safety car, but on review its actual race outcome
+  turned on a *race-control judgement call* (which lapped cars were waved
+  through before the one-lap restart) rather than a physics/strategy decision
+  the simulator can represent. Validating the simulator against it would be
+  uninformative at best (a stewarding call has no tyre/fuel/pace model) and
+  misleading at worst (if the pass-probability model happens to reproduce
+  Verstappen's move, there's no way to tell whether that's a correct model or
+  a lucky sample — spec 6.10's whole point about not trusting a single
+  stochastic run). It remains valuable as ingestion validation — the SC (L53-57)
+  and VSC (L36-37) extraction is still tested directly against it
+  (`test_safety_car_periods_match_documented_abu_dhabi_2021`) — just not as one
+  of the five races the counterfactual product is built and scored on.
+  Replaced with 2019 Hungarian GP (above), a genuinely strategy-decided race
+  with no confounding SC/VSC/red-flag periods at all.
 
 - **2026-08-03 — `DriverEntry` lives in `domain/race.py`, not a separate
   `domain/driver.py` as Part 3's layout diagram shows.** This was already the
