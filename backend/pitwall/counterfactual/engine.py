@@ -82,6 +82,7 @@ def fork_and_simulate(
     exposed separately, and for the `include_noise` default."""
     rng = make_rng(seed)
     prev_noise_s: dict[str, float] = {}
+    cumulative_clamp_penalty_s: dict[str, float] = {}
 
     real_by_driver_lap = {(lap.driver, lap.lap_number): lap for lap in snapshot.laps}
     drivers_with_laps = sorted({lap.driver for lap in snapshot.laps})
@@ -117,7 +118,12 @@ def fork_and_simulate(
                 in_dirty_air=(gap_ahead is not None and gap_ahead < DIRTY_AIR_FLAG_THRESHOLD_S),
                 pitted_this_lap=lap.is_in_lap,
                 under_sc=_track_status_for_lap(snapshot, lap.lap_number)[0],
+                # Pre-fork laps are real, not simulated: no clamp exists to
+                # have fired, so pre-clamp equals the real lap time and the
+                # accumulated held-up penalty is zero by construction.
                 stuck_behind_clamped=False,
+                pre_clamp_lap_time_s=lap.lap_time_s,
+                cumulative_clamp_penalty_s=0.0,
             )
         )
 
@@ -233,6 +239,8 @@ def fork_and_simulate(
             raced_this_lap = reorder_pitting_drivers(raced_this_lap, cumulative_time_s, pitted_this_lap)
 
         clamped_this_lap: set[str] = set()
+        pre_clamp_lap_times: dict[str, float] = {}
+        clamp_penalty_this_lap: dict[str, float] = {}
         if not (is_under_sc or is_under_vsc):
             raced_this_lap = resolve_positions(
                 raced_this_lap,
@@ -241,12 +249,17 @@ def fork_and_simulate(
                 race_params.overtake_difficulty,
                 rng,
                 clamped_this_lap=clamped_this_lap,
+                pre_clamp_lap_times=pre_clamp_lap_times,
+                clamp_penalty_this_lap=clamp_penalty_this_lap,
             )
 
         if is_under_sc:
             compressed = compress_field_under_sc([cumulative_time_s[d] for d in raced_this_lap])
             for driver, new_time in zip(raced_this_lap, compressed, strict=True):
                 cumulative_time_s[driver] = new_time
+
+        for driver, penalty in clamp_penalty_this_lap.items():
+            cumulative_clamp_penalty_s[driver] = cumulative_clamp_penalty_s.get(driver, 0.0) + penalty
 
         gaps = compute_gaps_to_leader(raced_this_lap, cumulative_time_s)
 
@@ -267,6 +280,8 @@ def fork_and_simulate(
                     pitted_this_lap=record.is_in_lap,
                     under_sc=is_under_sc,
                     stuck_behind_clamped=driver in clamped_this_lap,
+                    pre_clamp_lap_time_s=pre_clamp_lap_times.get(driver, this_lap_time_s[driver]),
+                    cumulative_clamp_penalty_s=cumulative_clamp_penalty_s.get(driver, 0.0),
                 )
             )
 

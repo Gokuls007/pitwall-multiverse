@@ -24,6 +24,18 @@ class LapState:
     pitted_this_lap: bool
     under_sc: bool
     stuck_behind_clamped: bool  # position.py's MIN_FOLLOWING_GAP_S floor fired this lap
+    # What the overtake roll actually saw. `lap_time_s` is post-clamp, but
+    # `resolve_positions` evaluates the pass on the pre-clamp value, so
+    # without this the deltas the rolls used are unrecoverable and any
+    # after-the-fact reconstruction of win probability is biased low.
+    # Equals `lap_time_s` when the clamp didn't fire.
+    pre_clamp_lap_time_s: float
+    # Running total of clamp ("held up behind a car you can't pass") time
+    # added to this driver so far. Separated from pace because it's a
+    # different quantity: a clamped driver's `cumulative_time_s` is pace plus
+    # this, and reporting a confidence band on the sum conflates uncertainty
+    # about pace with how much traffic the car happened to hit.
+    cumulative_clamp_penalty_s: float
 
 
 @dataclass(frozen=True)

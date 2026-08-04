@@ -2495,3 +2495,86 @@ now with a measured illustration of why the concern is real rather than
 theoretical.
 
 166 tests pass.
+
+### 2026-08-04 — MIN_FOLLOWING_GAP_S fitted; two observability gaps closed, both diagnoses confirmed
+
+Three items closing out Phase 4's backend work, all from review.
+
+**1. `MIN_FOLLOWING_GAP_S` is fitted, not a placeholder** —
+`scripts/fit_min_following_gap.py`, same pattern as the `AR1_PHI` script
+(re-fits, fails loudly on >0.05 drift). Operational definition: the 5th
+percentile of observed real `gap_to_ahead_s` across the catalogue over
+green-flag laps with a positive recorded gap. Pooled over 5,435 laps that's
+**0.580s**, with per-race p5 tightly clustered at 0.499-0.772s.
+
+A useful thing fell out of the distribution: the old 0.3 placeholder sits
+almost exactly at the **1st** percentile (0.323s). So it encoded "as close
+as cars *ever* momentarily get" and then applied that as a *sustained*
+floor — letting the simulator hold cars closer than real cars actually
+sustain, on the number the product reports as its headline margin. p5 rather
+than p1 is deliberate: it excludes the extreme tail (momentary same-corner
+readings, timing artifacts) while still representing genuine wheel-to-wheel
+running.
+
+**2. The pre-clamp/post-clamp observability gap is closed, and the
+reconstruction now works.** Added `LapState.pre_clamp_lap_time_s`: the
+value `resolve_positions` actually evaluated the pass roll on, before the
+clamp modified it. Redoing the closed-form win-probability reconstruction
+with it:
+
+| Reconstruction input | Predicted | Observed |
+|---|---|---|
+| post-clamp lap times (previous attempt) | 5.6% | 19% |
+| **pre-clamp lap times (now recorded)** | **21.5%** | **25%** |
+
+The remaining 21.5-vs-25 gap is a known selection artifact of reconstructing
+from stored state (the lap a pass *succeeds* on records VER at position 1,
+so it's skipped by the "is he behind someone" filter). Close enough to
+confirm the mechanism: **the win fraction is essentially a function of
+`overtake_difficulty` evaluated against noise-driven pace deltas**, and it
+is now checkable rather than a black box. This was the third round in which
+a missing observability field cost real diagnostic work — the stale
+clamp-detection heuristic and the unrecoverable roll inputs were the same
+class of blind spot — so the fields are added rather than the analysis
+being redone from inference again.
+
+**3. Clamp penalty is now a separate field, and the variance split
+confirms the ratcheting diagnosis exactly.** Added
+`LapState.cumulative_clamp_penalty_s`, a running total of held-up time
+added to each driver. Decomposing VER's post-fork cumulative growth across
+a 100-seed ensemble:
+
+| Component | mean | std |
+|---|---|---|
+| Total growth | 1583.97s | 8.83s |
+| of which held-up penalty | 13.45s | 7.74s |
+| **pace-only (total − penalty)** | 1570.52s | **5.02s** |
+| AR(1) prediction for pace-only std | — | 5.56s |
+
+Pace-only std (5.02s) matches the AR(1) prediction (5.56s) closely, while
+the inflation to 8.83s is entirely the held-up penalty. That confirms
+the earlier hypothesis: **the excess variance was traffic, not pace.**
+Practical consequence for Phase 6: a confidence band drawn on total
+cumulative time or gap would be reporting "how much traffic did this car
+hit" alongside "how uncertain is its pace." Those are now separable and
+should be reported separately.
+
+**Framing note carried forward, and it's the uncomfortable one**: since the
+wins come from the AR(1) noise tail, the win fraction is partly a function
+of φ = 0.622 — which is *unexplained persistence* absorbing whatever
+regressors the pace model is missing, not a physical constant. So a
+**better** pace model would have lower φ, a thinner tail, and fewer
+simulated wins. The win fraction therefore partly reflects model ignorance
+rather than race dynamics. This is the argument for headlining the closing
+trajectory (validated pace and tyre models) and reporting the win fraction
+as a footnote, not the reverse.
+
+With the fitted 0.58 floor the VER demo reads: VER wins 25/100 seeds,
+closing from ~20s down to the fitted floor. 166 tests pass.
+
+**Backend decision types stop here.** `ChangePitLap` + `AddPitStop` is
+enough surface to build a real interface against; `RemovePitStop`
+(extrapolation), `ChangeCompound` (prior-driven), and the safety-car
+decisions (SC exists only in Spanish, at lap ~8 with a long drift horizon,
+and Monaco, which is excluded from the gate) all have either a modelling
+or a data reason to wait. Next: Phase 6.
