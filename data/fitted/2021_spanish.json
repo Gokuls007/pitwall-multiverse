@@ -1,0 +1,645 @@
+{
+  "race_key": "2021_spanish",
+  "drivers": {
+    "ALO": {
+      "driver": "ALO",
+      "base_pace_s": 85.11510604339628,
+      "pace_std_s": 0.498838234706793,
+      "tyre_models": {
+        "MEDIUM": {
+          "compound": "MEDIUM",
+          "base_offset_s": 0.0,
+          "linear_deg_s_per_lap": 0.07930827396244061,
+          "cliff_lap": 22,
+          "cliff_deg_s_per_lap": 0.14823052044383556,
+          "r_squared": 0.8198972689308737,
+          "n_observations": 37
+        },
+        "SOFT": {
+          "compound": "SOFT",
+          "base_offset_s": -0.07297364645395726,
+          "linear_deg_s_per_lap": 0.06433185856717547,
+          "cliff_lap": null,
+          "cliff_deg_s_per_lap": null,
+          "r_squared": 0.9115351497796238,
+          "n_observations": 17
+        }
+      },
+      "overtake_skill": 0.5,
+      "defence_skill": 0.5
+    },
+    "BOT": {
+      "driver": "BOT",
+      "base_pace_s": 84.32414000223915,
+      "pace_std_s": 0.6736404434578264,
+      "tyre_models": {
+        "SOFT": {
+          "compound": "SOFT",
+          "base_offset_s": 0.0,
+          "linear_deg_s_per_lap": 0.02364951231433999,
+          "cliff_lap": null,
+          "cliff_deg_s_per_lap": null,
+          "r_squared": 0.37053322027869817,
+          "n_observations": 28
+        },
+        "MEDIUM": {
+          "compound": "MEDIUM",
+          "base_offset_s": -0.986940870757368,
+          "linear_deg_s_per_lap": 0.06309267693105708,
+          "cliff_lap": 13,
+          "cliff_deg_s_per_lap": 0.09814546084794695,
+          "r_squared": 0.8927212609519659,
+          "n_observations": 27
+        }
+      },
+      "overtake_skill": 0.5,
+      "defence_skill": 0.5
+    },
+    "GAS": {
+      "driver": "GAS",
+      "base_pace_s": 85.36247623206508,
+      "pace_std_s": 0.9288659022108708,
+      "tyre_models": {
+        "SOFT": {
+          "compound": "SOFT",
+          "base_offset_s": 0.0,
+          "linear_deg_s_per_lap": 0.07099974771062163,
+          "cliff_lap": null,
+          "cliff_deg_s_per_lap": null,
+          "r_squared": 0.25444372992899744,
+          "n_observations": 29
+        },
+        "MEDIUM": {
+          "compound": "MEDIUM",
+          "base_offset_s": -0.5232141874276335,
+          "linear_deg_s_per_lap": 0.060490082127651446,
+          "cliff_lap": null,
+          "cliff_deg_s_per_lap": null,
+          "r_squared": 0.9262568580172198,
+          "n_observations": 25
+        }
+      },
+      "overtake_skill": 0.5,
+      "defence_skill": 0.5
+    },
+    "GIO": {
+      "driver": "GIO",
+      "base_pace_s": 85.27493591763795,
+      "pace_std_s": 0.48109311345883987,
+      "tyre_models": {
+        "SOFT": {
+          "compound": "SOFT",
+          "base_offset_s": 0.0,
+          "linear_deg_s_per_lap": 0.05552630726352205,
+          "cliff_lap": 6,
+          "cliff_deg_s_per_lap": 0.07293407938706492,
+          "r_squared": 0.921828816898978,
+          "n_observations": 28
+        },
+        "MEDIUM": {
+          "compound": "MEDIUM",
+          "base_offset_s": -0.17869558289776988,
+          "linear_deg_s_per_lap": 0.08991179369198973,
+          "cliff_lap": null,
+          "cliff_deg_s_per_lap": null,
+          "r_squared": 0.7626084556659665,
+          "n_observations": 27
+        }
+      },
+      "overtake_skill": 0.5,
+      "defence_skill": 0.5
+    },
+    "HAM": {
+      "driver": "HAM",
+      "base_pace_s": 82.74639441286698,
+      "pace_std_s": 0.33643195443260293,
+      "tyre_models": {
+        "MEDIUM": {
+          "compound": "MEDIUM",
+          "base_offset_s": 0.0,
+          "linear_deg_s_per_lap": 0.08190848311941434,
+          "cliff_lap": null,
+          "cliff_deg_s_per_lap": null,
+          "r_squared": 0.7871247644204753,
+          "n_observations": 35
+        },
+        "SOFT": {
+          "compound": "SOFT",
+          "base_offset_s": 0.3039468151520287,
+          "linear_deg_s_per_lap": 0.056640653849352796,
+          "cliff_lap": 9,
+          "cliff_deg_s_per_lap": 0.06681952434862787,
+          "r_squared": 0.9603326089166947,
+          "n_observations": 22
+        }
+      },
+      "overtake_skill": 0.5,
+      "defence_skill": 0.5
+    },
+    "LAT": {
+      "driver": "LAT",
+      "base_pace_s": 85.87673796479527,
+      "pace_std_s": 0.40880304859570166,
+      "tyre_models": {
+        "MEDIUM": {
+          "compound": "MEDIUM",
+          "base_offset_s": 0.0,
+          "linear_deg_s_per_lap": 0.042199129788833535,
+          "cliff_lap": null,
+          "cliff_deg_s_per_lap": null,
+          "r_squared": 0.3717693457502994,
+          "n_observations": 31
+        },
+        "SOFT": {
+          "compound": "SOFT",
+          "base_offset_s": 0.6906657858125029,
+          "linear_deg_s_per_lap": 0.05678177968292794,
+          "cliff_lap": null,
+          "cliff_deg_s_per_lap": null,
+          "r_squared": 0.7861380129756603,
+          "n_observations": 17
+        }
+      },
+      "overtake_skill": 0.5,
+      "defence_skill": 0.5
+    },
+    "LEC": {
+      "driver": "LEC",
+      "base_pace_s": 84.14633038150671,
+      "pace_std_s": 0.3147223223687616,
+      "tyre_models": {
+        "SOFT": {
+          "compound": "SOFT",
+          "base_offset_s": 0.0,
+          "linear_deg_s_per_lap": 0.044547317359201935,
+          "cliff_lap": 22,
+          "cliff_deg_s_per_lap": 0.14886881472173136,
+          "r_squared": 0.6647674262411569,
+          "n_observations": 29
+        },
+        "MEDIUM": {
+          "compound": "MEDIUM",
+          "base_offset_s": 0.07677474757307426,
+          "linear_deg_s_per_lap": 0.050814899153278775,
+          "cliff_lap": 25,
+          "cliff_deg_s_per_lap": 0.1943471968422058,
+          "r_squared": 0.9336783169422965,
+          "n_observations": 27
+        }
+      },
+      "overtake_skill": 0.5,
+      "defence_skill": 0.5
+    },
+    "MAZ": {
+      "driver": "MAZ",
+      "base_pace_s": 86.44377519902802,
+      "pace_std_s": 0.7651314295404773,
+      "tyre_models": {
+        "MEDIUM": {
+          "compound": "MEDIUM",
+          "base_offset_s": 0.0,
+          "linear_deg_s_per_lap": 0.09537359744599097,
+          "cliff_lap": null,
+          "cliff_deg_s_per_lap": null,
+          "r_squared": 0.35725582675509904,
+          "n_observations": 35
+        },
+        "SOFT": {
+          "compound": "SOFT",
+          "base_offset_s": 0.8570748009719616,
+          "linear_deg_s_per_lap": 0.0301520328529181,
+          "cliff_lap": 5,
+          "cliff_deg_s_per_lap": 0.06182703285291363,
+          "r_squared": 0.9094268188454431,
+          "n_observations": 16
+        }
+      },
+      "overtake_skill": 0.5,
+      "defence_skill": 0.5
+    },
+    "MSC": {
+      "driver": "MSC",
+      "base_pace_s": 85.89353809003617,
+      "pace_std_s": 0.9308875637916076,
+      "tyre_models": {
+        "MEDIUM": {
+          "compound": "MEDIUM",
+          "base_offset_s": 0.0,
+          "linear_deg_s_per_lap": 0.057570245119030944,
+          "cliff_lap": null,
+          "cliff_deg_s_per_lap": null,
+          "r_squared": 0.4311756324373067,
+          "n_observations": 34
+        },
+        "SOFT": {
+          "compound": "SOFT",
+          "base_offset_s": 1.3240471102354079,
+          "linear_deg_s_per_lap": 0.01882105016452775,
+          "cliff_lap": null,
+          "cliff_deg_s_per_lap": null,
+          "r_squared": 0.8214818471307259,
+          "n_observations": 18
+        }
+      },
+      "overtake_skill": 0.5,
+      "defence_skill": 0.5
+    },
+    "NOR": {
+      "driver": "NOR",
+      "base_pace_s": 85.47030412424807,
+      "pace_std_s": 0.7171433612619895,
+      "tyre_models": {
+        "SOFT": {
+          "compound": "SOFT",
+          "base_offset_s": 0.0,
+          "linear_deg_s_per_lap": 0.031958659316834566,
+          "cliff_lap": null,
+          "cliff_deg_s_per_lap": null,
+          "r_squared": 0.40914288088434925,
+          "n_observations": 30
+        },
+        "MEDIUM": {
+          "compound": "MEDIUM",
+          "base_offset_s": 0.03245508863394551,
+          "linear_deg_s_per_lap": 0.029208037126405142,
+          "cliff_lap": 23,
+          "cliff_deg_s_per_lap": 0.5802393849239177,
+          "r_squared": 0.6662405844540293,
+          "n_observations": 26
+        }
+      },
+      "overtake_skill": 0.5,
+      "defence_skill": 0.5
+    },
+    "OCO": {
+      "driver": "OCO",
+      "base_pace_s": 84.55459906397934,
+      "pace_std_s": 0.6824475742249657,
+      "tyre_models": {
+        "MEDIUM": {
+          "compound": "MEDIUM",
+          "base_offset_s": 0.0,
+          "linear_deg_s_per_lap": 0.10593265131981312,
+          "cliff_lap": 22,
+          "cliff_deg_s_per_lap": 0.20510574259907915,
+          "r_squared": 0.7706661172981155,
+          "n_observations": 41
+        },
+        "SOFT": {
+          "compound": "SOFT",
+          "base_offset_s": 0.2793573374618861,
+          "linear_deg_s_per_lap": 0.051814532852914506,
+          "cliff_lap": 8,
+          "cliff_deg_s_per_lap": 0.07831677708333201,
+          "r_squared": 0.9881010164475057,
+          "n_observations": 17
+        }
+      },
+      "overtake_skill": 0.5,
+      "defence_skill": 0.5
+    },
+    "PER": {
+      "driver": "PER",
+      "base_pace_s": 84.45454963018052,
+      "pace_std_s": 0.5237016610265621,
+      "tyre_models": {
+        "SOFT": {
+          "compound": "SOFT",
+          "base_offset_s": 0.0,
+          "linear_deg_s_per_lap": 0.04869850335988996,
+          "cliff_lap": null,
+          "cliff_deg_s_per_lap": null,
+          "r_squared": 0.5545102305992382,
+          "n_observations": 29
+        },
+        "MEDIUM": {
+          "compound": "MEDIUM",
+          "base_offset_s": -0.15271223036410944,
+          "linear_deg_s_per_lap": 0.04410021060226441,
+          "cliff_lap": null,
+          "cliff_deg_s_per_lap": null,
+          "r_squared": 0.7819237045389764,
+          "n_observations": 27
+        }
+      },
+      "overtake_skill": 0.5,
+      "defence_skill": 0.5
+    },
+    "RAI": {
+      "driver": "RAI",
+      "base_pace_s": 86.09492870095298,
+      "pace_std_s": 0.7062638985578946,
+      "tyre_models": {
+        "MEDIUM": {
+          "compound": "MEDIUM",
+          "base_offset_s": 0.0,
+          "linear_deg_s_per_lap": 0.027259488291008452,
+          "cliff_lap": 26,
+          "cliff_deg_s_per_lap": 0.1613765327705463,
+          "r_squared": 0.5537469402674062,
+          "n_observations": 32
+        },
+        "SOFT": {
+          "compound": "SOFT",
+          "base_offset_s": -0.6479242590205415,
+          "linear_deg_s_per_lap": 0.057829736674224475,
+          "cliff_lap": null,
+          "cliff_deg_s_per_lap": null,
+          "r_squared": 0.6819445646695639,
+          "n_observations": 25
+        }
+      },
+      "overtake_skill": 0.5,
+      "defence_skill": 0.5
+    },
+    "RIC": {
+      "driver": "RIC",
+      "base_pace_s": 84.80907471431246,
+      "pace_std_s": 0.29625837926852633,
+      "tyre_models": {
+        "SOFT": {
+          "compound": "SOFT",
+          "base_offset_s": 0.0,
+          "linear_deg_s_per_lap": 0.036630041491330236,
+          "cliff_lap": 9,
+          "cliff_deg_s_per_lap": 0.057789191182617716,
+          "r_squared": 0.6231187814727778,
+          "n_observations": 36
+        },
+        "MEDIUM": {
+          "compound": "MEDIUM",
+          "base_offset_s": -0.21338858597207153,
+          "linear_deg_s_per_lap": 0.049779445133613265,
+          "cliff_lap": 10,
+          "cliff_deg_s_per_lap": 0.08756190127396553,
+          "r_squared": 0.8337589759762296,
+          "n_observations": 19
+        }
+      },
+      "overtake_skill": 0.5,
+      "defence_skill": 0.5
+    },
+    "RUS": {
+      "driver": "RUS",
+      "base_pace_s": 85.38290738761735,
+      "pace_std_s": 0.7267032595791084,
+      "tyre_models": {
+        "MEDIUM": {
+          "compound": "MEDIUM",
+          "base_offset_s": 0.0,
+          "linear_deg_s_per_lap": 0.0948317523133753,
+          "cliff_lap": 21,
+          "cliff_deg_s_per_lap": 0.1958584479205929,
+          "r_squared": 0.6105691880837856,
+          "n_observations": 52
+        },
+        "SOFT": {
+          "compound": "SOFT",
+          "base_offset_s": 2.0077926123825502,
+          "linear_deg_s_per_lap": 0.05678177968292794,
+          "cliff_lap": null,
+          "cliff_deg_s_per_lap": null,
+          "r_squared": 0.9969055766753968,
+          "n_observations": 5
+        }
+      },
+      "overtake_skill": 0.5,
+      "defence_skill": 0.5
+    },
+    "SAI": {
+      "driver": "SAI",
+      "base_pace_s": 84.54214991143562,
+      "pace_std_s": 0.4158210970423258,
+      "tyre_models": {
+        "SOFT": {
+          "compound": "SOFT",
+          "base_offset_s": 0.0,
+          "linear_deg_s_per_lap": 0.05744000668298341,
+          "cliff_lap": 10,
+          "cliff_deg_s_per_lap": 0.0964623982046866,
+          "r_squared": 0.6791556299934203,
+          "n_observations": 32
+        },
+        "MEDIUM": {
+          "compound": "MEDIUM",
+          "base_offset_s": 0.3329682303007714,
+          "linear_deg_s_per_lap": 0.0190342956987632,
+          "cliff_lap": 11,
+          "cliff_deg_s_per_lap": 0.10295146412248013,
+          "r_squared": 0.6682288853375633,
+          "n_observations": 22
+        }
+      },
+      "overtake_skill": 0.5,
+      "defence_skill": 0.5
+    },
+    "STR": {
+      "driver": "STR",
+      "base_pace_s": 85.2384975843341,
+      "pace_std_s": 0.6255895625626503,
+      "tyre_models": {
+        "SOFT": {
+          "compound": "SOFT",
+          "base_offset_s": 0.0,
+          "linear_deg_s_per_lap": 0.07016199579011154,
+          "cliff_lap": null,
+          "cliff_deg_s_per_lap": null,
+          "r_squared": 0.4408372206650739,
+          "n_observations": 39
+        },
+        "MEDIUM": {
+          "compound": "MEDIUM",
+          "base_offset_s": 0.2640269003347186,
+          "linear_deg_s_per_lap": 0.051828818567201215,
+          "cliff_lap": null,
+          "cliff_deg_s_per_lap": null,
+          "r_squared": 0.9109154723998968,
+          "n_observations": 15
+        }
+      },
+      "overtake_skill": 0.5,
+      "defence_skill": 0.5
+    },
+    "VER": {
+      "driver": "VER",
+      "base_pace_s": 83.13092510626979,
+      "pace_std_s": 0.40594320124062816,
+      "tyre_models": {
+        "MEDIUM": {
+          "compound": "MEDIUM",
+          "base_offset_s": 0.0,
+          "linear_deg_s_per_lap": 0.07312805462526181,
+          "cliff_lap": 12,
+          "cliff_deg_s_per_lap": 0.09310606970480814,
+          "r_squared": 0.8737652300154845,
+          "n_observations": 34
+        },
+        "SOFT": {
+          "compound": "SOFT",
+          "base_offset_s": -0.22983783024362936,
+          "linear_deg_s_per_lap": 0.06875741549485932,
+          "cliff_lap": null,
+          "cliff_deg_s_per_lap": null,
+          "r_squared": 0.8859273977547637,
+          "n_observations": 24
+        }
+      },
+      "overtake_skill": 0.5,
+      "defence_skill": 0.5
+    },
+    "VET": {
+      "driver": "VET",
+      "base_pace_s": 85.38148416499793,
+      "pace_std_s": 0.6732356956759886,
+      "tyre_models": {
+        "SOFT": {
+          "compound": "SOFT",
+          "base_offset_s": 0.0,
+          "linear_deg_s_per_lap": 0.06755104424317816,
+          "cliff_lap": null,
+          "cliff_deg_s_per_lap": null,
+          "r_squared": 0.4917229325161878,
+          "n_observations": 39
+        },
+        "MEDIUM": {
+          "compound": "MEDIUM",
+          "base_offset_s": -0.3568063560390901,
+          "linear_deg_s_per_lap": 0.08863238999576936,
+          "cliff_lap": null,
+          "cliff_deg_s_per_lap": null,
+          "r_squared": 0.8963043058018392,
+          "n_observations": 15
+        }
+      },
+      "overtake_skill": 0.5,
+      "defence_skill": 0.5
+    },
+    "TSU": {
+      "driver": "TSU",
+      "base_pace_s": 85.36247623206508,
+      "pace_std_s": 0.9288659022108708,
+      "tyre_models": {
+        "SOFT": {
+          "compound": "SOFT",
+          "base_offset_s": 0.0,
+          "linear_deg_s_per_lap": 0.07099974771062163,
+          "cliff_lap": null,
+          "cliff_deg_s_per_lap": null,
+          "r_squared": 0.25444372992899744,
+          "n_observations": 29
+        },
+        "MEDIUM": {
+          "compound": "MEDIUM",
+          "base_offset_s": -0.5232141874276335,
+          "linear_deg_s_per_lap": 0.060490082127651446,
+          "cliff_lap": null,
+          "cliff_deg_s_per_lap": null,
+          "r_squared": 0.9262568580172198,
+          "n_observations": 25
+        }
+      },
+      "overtake_skill": 0.5,
+      "defence_skill": 0.5
+    }
+  },
+  "fuel_effect_s_per_lap": 0.05301453285291302,
+  "pit_lane_loss_s": 23.236953649244548,
+  "pit_stop_stationary_s": 2.4,
+  "dirty_air": {
+    "max_penalty_s": 1.3484869403339348,
+    "decay_scale_s": 0.40231571919431314,
+    "r_squared": 0.007745207065628978,
+    "n_observations": 986
+  },
+  "overtake_difficulty": 0.9044117647058824,
+  "sc_lap_time_multiplier": 1.3717497926009814,
+  "vsc_lap_time_multiplier": 1.35,
+  "fitted_at": "2026-08-04T03:52:31.522985+00:00",
+  "fit_diagnostics": {
+    "per_driver_fallbacks": {
+      "TSU": "Only 7 usable laps (<6); cannot fit independently (spec 6.2) \u2014 using teammate fallback below. Copied teammate GAS's fit."
+    },
+    "warnings": [],
+    "drivers_with_own_fit": [
+      "ALO",
+      "BOT",
+      "GAS",
+      "GIO",
+      "HAM",
+      "LAT",
+      "LEC",
+      "MAZ",
+      "MSC",
+      "NOR",
+      "OCO",
+      "PER",
+      "RAI",
+      "RIC",
+      "RUS",
+      "SAI",
+      "STR",
+      "VER",
+      "VET"
+    ],
+    "drivers_needing_teammate_fallback": [
+      "TSU"
+    ],
+    "fuel": {
+      "method": "pooled_regression",
+      "fallback_prior_used": false,
+      "clipped_to_prior": false,
+      "condition_number": 7.564727776206302,
+      "n_drivers_pooled": 20,
+      "n_laps_pooled": 1046,
+      "r_squared": 0.8021706199847886,
+      "pooled_fit_rejected": false
+    },
+    "tyre_fallback_notes": {
+      "LAT": [
+        "SOFT: this driver's own fit gave an implausible degradation slope (-0.0253 s/lap, r2=0.786, n=17) \u2014 not physical; using the cross-driver pooled slope (0.0568 s/lap, 15 drivers) instead."
+      ],
+      "RUS": [
+        "SOFT: this driver's own fit gave an implausible degradation slope (-0.1483 s/lap, r2=0.997, n=5) \u2014 not physical; using the cross-driver pooled slope (0.0568 s/lap, 15 drivers) instead."
+      ]
+    },
+    "compound_ordering_check": {
+      "SOFT_vs_MEDIUM_mean_offset_diff_s": 0.33704478801706883,
+      "violations": [
+        "COMPOUND ORDERING VIOLATION: SOFT averages 0.337s SLOWER than MEDIUM across 20 drivers (expected negative \u2014 SOFT should be faster). Likely track-evolution/stint-order conflation with the linear fuel_effect term \u2014 see DECISIONS.md. Not corrected; disclosed for Phase 3."
+      ]
+    },
+    "pit_loss": {
+      "n_stops_used": 36,
+      "n_stops_excluded": 1,
+      "exclusion_reasons": [
+        "GIO L8: missing in/out lap time"
+      ],
+      "fallback_used": false,
+      "median_s": 23.236953649244548,
+      "std_s": 9.444878260270348,
+      "min_s": 19.151378551113822,
+      "max_s": 64.55680096712837,
+      "stationary_time_is_a_declared_prior_not_fitted": true
+    },
+    "dirty_air": {
+      "n_observations": 986,
+      "n_skipped_no_gap": 60,
+      "n_skipped_no_driver_params": 0,
+      "fallback_used": false,
+      "r_squared": 0.007745207065628978
+    },
+    "overtaking": {
+      "passes_counted": 39,
+      "passes_excluded_pit_stop": 124,
+      "passes_excluded_retirement": 0,
+      "close_proximity_laps": 408,
+      "pass_rate": 0.09558823529411764,
+      "single_race_estimate_uncertainty": "This is a single-race sample (no multi-race circuit pooling, spec Part 15 stretch goal) \u2014 treat overtake_difficulty as noisy, not a precise circuit constant."
+    },
+    "sc_vsc": {
+      "n_sc_laps": 51,
+      "n_vsc_laps": 0,
+      "vsc_multiplier_is_prior_fallback": true
+    }
+  }
+}

@@ -122,4 +122,17 @@ Phase 3 (validation) is a hard gate — no counterfactuals until replay reproduc
   `race_control_messages` as an ingestion test fixture. Run `python
   backend/scripts/prefetch_races.py` to (re)warm the cache and print the
   cleaning report for every race.
-- Phase 2 (parameter fitting): not started.
+- **Phase 2 (parameter fitting): done, with one disclosed limitation.**
+  `parameters/` (tyre, fuel, pace, pit_loss, dirty_air, overtaking, fit_all)
+  fitted for all five catalogue races; results persisted to `data/fitted/`.
+  Degradation rates are positive and sanity-bounded on every race (zero
+  negative/implausible slopes after fixes — see DECISIONS.md). **Known
+  limitation, not corrected in this phase:** compound offset ordering
+  (soft/medium/hard pace ranking) is frequently wrong, root-caused to spec
+  6.1's linear `fuel_effect` term not capturing front-loaded track evolution —
+  logged loudly as `COMPOUND ORDERING VIOLATION` in
+  `fit_diagnostics["compound_ordering_check"]` on every race, not hidden.
+  Watch for this specifically in Phase 3 validation around compound
+  transitions. Run `python backend/scripts/fit_parameters.py` to refit and
+  print a diagnostics summary per race.
+- Phase 3 (simulator + validation, hard gate): not started.

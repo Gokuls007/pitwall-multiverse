@@ -171,3 +171,183 @@ Newest entries at the bottom of each phase section.
   Phase 1's "cleaning report prints usable vs excluded lap counts with reasons"
   acceptance criterion — `load_race()` returns `(RaceSnapshot, IngestionReport)`
   and `scripts/prefetch_races.py` prints the report for every catalogue race.
+
+---
+
+## Phase 2 — Parameter fitting
+
+- **2026-08-03 — Domain placement: `TyreModel`/`DriverParams` in
+  `domain/driver.py`; `RaceParameters`/`DirtyAirModel` in `domain/race.py`.**
+  Part 3's layout diagram doesn't assign the Part 5.2 dataclasses to specific
+  files. `DriverParams` (fitted) joins `driver.py` alongside the file's own
+  name; `RaceParameters` joins `race.py` next to `RaceSnapshot` since both are
+  keyed by `race_key` and persisted/consumed together. `DirtyAirModel` has no
+  shape given in the spec's own code block (5.2 lists it by name only) — see
+  the dirty-air entry below for the shape chosen.
+
+- **2026-08-03 — The fuel/tyre confound is separable within a single driver
+  only if a compound is *revisited* at a different lap-number offset — not
+  merely "more than one stint."** Writing the synthetic recovery test first
+  (as the Phase 2 prompt requires) surfaced this before any real data was
+  touched: within one contiguous stint, tyre age is an exact affine function
+  of lap number (`age = lap_number - stint_start_offset`). A design with one
+  age column and one offset dummy per compound has a nontrivial null space —
+  a shared shift in the fuel coefficient is exactly cancelled by the same
+  shift in every compound's degradation slope plus compensating offsets —
+  *regardless of how many stints exist*, as long as no compound repeats. It
+  only becomes identifiable when a compound is used in two non-adjacent
+  stints at different lap-number offsets (e.g. SOFT-MEDIUM-SOFT), which
+  breaks the shared-column algebra. `tests/test_parameters.py`'s positive
+  recovery test uses exactly this shape; a same-length "two distinct
+  compounds, no repeat" scenario is kept as an explicit negative control.
+
+- **2026-08-03 — Exact-rank checks miss real data's actual failure mode;
+  switched to a column-normalized condition number.** `np.linalg.matrix_rank`
+  only catches *exact* singularity, but real cleaning (excluded laps, SC/VSC,
+  MAD outliers) perturbs the design just enough that it's rarely exactly
+  singular even when it's practically unidentifiable — the symptom is a
+  regression that "succeeds" but returns wild, unphysical coefficients.
+  Verified empirically on 2019 Hungary: 17/20 drivers had condition numbers of
+  1e15-1e16 (fuel estimates from -2.7 to +0.18 s/lap) while the 2 drivers who
+  genuinely repeated a compound had condition numbers of ~7-10. Columns are
+  L2-normalized before taking the condition number (so a 0/1 dummy column
+  doesn't get an unfair condition-number penalty against a `lap_number`
+  column spanning 1-70) and a driver's fit is trusted only below
+  `CONDITION_NUMBER_THRESHOLD = 1e5` — chosen empirically (there's a 12-orders-
+  of-magnitude gap between the "genuinely identified" and "not" populations,
+  so the exact cutoff isn't sensitive). See `tyre.fit_driver_joint`.
+
+- **2026-08-03 — A driver-level plausibility bound catches what the condition
+  number alone doesn't.** Even after the condition-number fix, 2018 Australian
+  GP's Leclerc (3-stint MEDIUM-HARD-SOFT, no repeated compound, but HARD had
+  only 3 post-cleaning laps) passed the condition-number check yet still
+  produced `fuel_coef_s_per_lap=2.13` s/lap — ~40x the plausible range. A
+  compound with too few laps to earn its own age term (so it contributes only
+  a dummy) can numerically "unstick" the condition number from astronomical
+  without giving the regression enough real information to pin the fuel
+  effect down. Added a direct sanity bound on the *output*
+  (`PLAUSIBLE_FUEL_EFFECT_RANGE_S_PER_LAP = (-0.3, 0.5)` in `fuel.py`;
+  `MAX_PLAUSIBLE_SLOPE_S_PER_LAP = 0.5` s/lap in `tyre.py`) — deliberately wide
+  so ordinary noise around a true small value still counts, but rejects
+  order-of-magnitude confound-leakage artifacts regardless of *why* the
+  regression produced them. Same treatment applied to negative degradation
+  slopes (spec 6.3's explicit positivity prior): an implausible own-fit slope
+  (negative or absurdly large) now falls back to the cross-driver pooled
+  slope for that compound, or flat 0.0 if no pooled estimate is sensible
+  either — extending the existing sparse-data pooling mechanism (6.3 point 4)
+  to also cover "enough samples but a physically-impossible sign/magnitude."
+  Result: zero negative or implausible-magnitude degradation slopes across
+  all five catalogue races (was up to 21/43 negative before this fix).
+
+- **2026-08-03 — Compound offset must be fit *jointly* with tyre age, not as
+  a separate group-mean step.** The first working version of `fit_driver_final`
+  computed each compound's offset as a plain group mean of fuel-adjusted lap
+  time (a const+dummy-only regression), then fit the age slope afterward on
+  the residuals. This silently conflates pace with however much tyre wear a
+  compound's *sampled* laps happened to average. Found concretely on 2019
+  Hungary's Hamilton: his HARD laps averaged tyre age 9 against MEDIUM's 15,
+  making HARD's raw mean pace look faster than MEDIUM's even though HARD is
+  the physically slower compound — the group mean was baking in "how worn were
+  the tyres on average," not "how fast is this compound at age zero." Fixed by
+  including per-compound age columns in the *same* regression that estimates
+  the offset dummies (mirroring pass 1's design), so offsets are correctly
+  adjusted for whatever age distribution each compound happened to sample.
+
+- **2026-08-03 — Pooled the fuel-effect fit across every driver simultaneously
+  (per-driver intercepts, shared compound/age terms, one shared lap-number
+  coefficient) as the primary method, keeping the per-driver-median approach
+  as a documented fallback.** Motivated by a genuine finding, not a synthetic
+  concern: even after the fixes above, real catalogue races showed the
+  expected soft-faster-than-medium-faster-than-hard offset ordering violated
+  on roughly half of all driver/compound pairs — and on 2021 Spanish GP,
+  *all 20/20 drivers* showed SOFT slower than MEDIUM, which is far too
+  consistent to be per-driver noise. Traced to: whichever compound a driver
+  used *latest* in the race consistently looked fastest, regardless of which
+  compound it physically was (confirmed by checking each compound's mean
+  lap-of-use per race). Pooling every driver into one regression gives the
+  lap-number coefficient far more identifying variation (different drivers
+  pit at different laps, so the field mixes tyre ages and compounds at any
+  given lap number in a way no single driver's own race offers) — implemented
+  in `fuel.fit_pooled_fuel_effect`. This measurably improved the fuel-effect
+  estimate's robustness but did **not** fully resolve the ordering violation
+  (see next entry) — the pooling fix and the remaining limitation are
+  separate findings.
+
+- **2026-08-03 — KNOWN LIMITATION, disclosed loudly rather than silently
+  shipped: compound offset ordering is still frequently wrong, root cause
+  understood and is a limitation of spec 6.1's own linear fuel-effect term,
+  not a bug in this implementation.** After the pooled-fuel-effect fix above,
+  the violation rate barely changed — meaning the fuel-effect *magnitude*
+  was never the real bottleneck. The actual mechanism: real on-track grip
+  ("track evolution," rubber laid down as a race progresses) is front-loaded
+  — fast improvement early, then a plateau — not linear in lap number. Spec
+  6.1's lap-time composition has no separate term for it; the single linear
+  `fuel_effect(laps_remaining)` term is the only lever available, and a linear
+  term structurally cannot represent a front-loaded, decaying trend. Since
+  compound choice correlates with stint order (a driver's first stint is
+  usually SOFT or MEDIUM; whichever compound is used *last* is on average
+  raced during the flattest, most-evolved part of the track), the compound
+  used latest is systematically under-corrected for the (large, early) grip
+  gain it never experienced and so looks artificially fast relative to
+  compounds used earlier. This was verified directly: per-race mean
+  lap-of-use per compound lines up exactly with which pairwise offset
+  comparisons come out backwards (e.g. 2018 Australia: SOFT mean lap 22,
+  MEDIUM 27, HARD 42 — and HARD is the one that looks anomalously fast).
+  **This is not corrected in Phase 2** — doing so would mean adding a
+  nonlinear track-evolution term to the model, which isn't representable in
+  `RaceParameters.fuel_effect_s_per_lap`'s spec-defined single-float schema
+  (Part 5.2) without a schema change beyond this phase's scope. Instead:
+  `fit_all._check_compound_ordering` computes the reference-independent,
+  per-driver offset difference for every compound pair, averages it across
+  the field, and logs a loud `COMPOUND ORDERING VIOLATION` warning (recorded
+  in `fit_diagnostics["compound_ordering_check"]`) whenever the aggregate
+  comes out backwards — every catalogue race currently triggers at least one.
+  Per spec Part 14 rule 8 ("stop and ask if... a design decision in this spec
+  appears to be wrong"): flagging this now rather than papering over it in
+  Phase 2, and it should be watched closely in Phase 3 — if green-flag lap
+  time MAE or the gap-trace shape comes out wrong specifically around
+  compound transitions, this is the first place to look.
+
+- **2026-08-03 — `pit_stop_stationary_s` is a declared prior, not fitted.**
+  Spec 6.5 asks for stationary (box) time and pit-lane transit loss reported
+  separately, but splitting them requires telemetry (car speed through the
+  pit lane) — and ingestion deliberately loads `telemetry=False` for
+  performance (spec 4.1). Only their sum ("total pit loss") is identifiable
+  from lap-level timing data: measured as (actual in-lap + out-lap time) minus
+  (modelled expected pace for those laps), aggregated via median across all
+  stops in the race, per circuit-specific `pit_lane_loss_s`. Stationary time
+  is set to a fixed, documented prior (2.4s, typical modern F1 box time),
+  justified as a prior-with-bounds per Part 14 rule 1 exactly as spec 6.7
+  permits for driver skill. Verified plausible and consistent across all five
+  races (pit_lane_loss_s ranged ~18-34s, all within the sane per-circuit range).
+
+- **2026-08-03 — Driver `overtake_skill`/`defence_skill` set uniformly to 0.5
+  (neutral), not fitted.** Spec 6.7 explicitly permits hand-set priors here
+  since they aren't identifiable from a single race, provided they're (a)
+  declared, (b) narrowly bounded, (c) sensitivity-checked. A uniform constant
+  trivially satisfies all three: it's declared in `pace.py`, it has zero
+  variance (as narrow a bound as exists), and a simulation cannot be sensitive
+  to a parameter that never varies across drivers. Differentiating real skill
+  would need multi-race pooling (Part 15 stretch goal).
+
+- **2026-08-03 — `DirtyAirModel` shape: single-exponential decay.** Spec 5.2
+  lists `DirtyAirModel` by name only, without a functional form. Chosen as
+  `penalty(gap) = max_penalty_s * exp(-gap / decay_scale_s)` — the simplest
+  function satisfying 6.6's required shape (maximal at gap=0, saturating to
+  ~0 by a few seconds). Fit via `scipy.optimize.curve_fit`. Fit quality was
+  poor-to-negative R² on several races (single-race dirty-air fitting is
+  inherently noisy per spec 6.6's own acknowledgement that per-driver
+  sensitivity isn't identifiable from one race) — disclosed via
+  `fit_diagnostics["dirty_air"]`, with degenerate fits (hit a fitting bound)
+  falling back to the spec 6.6 sanity-prior midpoint rather than reporting a
+  meaningless negative-R² curve as if it were trustworthy.
+
+- **2026-08-03 — SC/VSC lap-time multipliers fall back to declared priors
+  (SC 1.50, VSC 1.35) when a race has no SC or no VSC laps to fit from.**
+  Most of this project's catalogue races have few or no safety-car periods
+  (2019 Hungary and 2021 Spain have none at all) — computed directly in
+  `fit_all._sc_vsc_multipliers` from the ratio of actual lap time to modelled
+  expected pace on SC/VSC-flagged laps (excluding in/out laps, whose extra
+  time is pit loss, not the SC/VSC effect), median-aggregated; falls back to
+  the declared prior with the fallback explicitly flagged in diagnostics when
+  no such laps exist.

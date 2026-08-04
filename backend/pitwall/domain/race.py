@@ -6,9 +6,12 @@ repeatedly, and shared mutable state produces bugs that are hard to trace.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Literal
 
+from .driver import DriverParams
 from .enums import Compound
 
 
@@ -108,3 +111,49 @@ class RaceSnapshot:
 
     def usable_laps(self) -> tuple[LapRecord, ...]:
         return tuple(lap for lap in self.laps if lap.is_usable_for_fitting)
+
+
+@dataclass(frozen=True)
+class DirtyAirModel:
+    """Pace penalty vs gap-to-car-ahead (spec 6.6): a monotonic-decreasing,
+    saturating-at-both-ends function of gap. Not given an explicit shape in
+    the spec's own code block (5.2 lists it only by name) — modelled here as
+    single-exponential decay, the simplest function with the required shape
+    (maximal at gap=0, decays smoothly to ~0 beyond a few seconds, matching
+    6.6's "penalties... tapering to negligible beyond roughly two seconds").
+    """
+
+    max_penalty_s: float  # penalty as gap -> 0
+    decay_scale_s: float  # gap, in seconds, over which the penalty decays by 1/e
+    r_squared: float
+    n_observations: int
+
+    def penalty_s(self, gap_s: float | None) -> float:
+        if gap_s is None:
+            return 0.0
+        gap_s = max(gap_s, 0.0)
+        if self.decay_scale_s <= 0:
+            return 0.0
+        return self.max_penalty_s * math.exp(-gap_s / self.decay_scale_s)
+
+
+@dataclass(frozen=True)
+class RaceParameters:
+    """All fitted parameters for one race (spec 5.2). Persisted to `data/fitted/`.
+
+    Placed in `race.py` alongside `RaceSnapshot` (both keyed by `race_key`)
+    rather than a dedicated file — Part 3's layout diagram doesn't assign
+    `RaceParameters`/`DirtyAirModel` to a specific domain file. See DECISIONS.md.
+    """
+
+    race_key: str
+    drivers: dict[str, DriverParams]
+    fuel_effect_s_per_lap: float
+    pit_lane_loss_s: float
+    pit_stop_stationary_s: float
+    dirty_air: DirtyAirModel
+    overtake_difficulty: float  # circuit-specific, 0..1
+    sc_lap_time_multiplier: float
+    vsc_lap_time_multiplier: float
+    fitted_at: datetime
+    fit_diagnostics: dict  # per-model R², sample counts, warnings, fallbacks (spec 8.4)
