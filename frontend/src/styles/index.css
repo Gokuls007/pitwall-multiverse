@@ -1,3 +1,52 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  html {
+    /* Tabular figures everywhere by default: a timing sheet's columns must
+       align, and proportional digits break that silently. */
+    font-variant-numeric: tabular-nums;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body {
+    @apply bg-paper text-ink font-sans;
+  }
+
+  /* Visible keyboard focus is a hard constraint (spec 11.1). Ink outline
+     reads unambiguously against paper; offset keeps it clear of hairlines. */
+  :focus-visible {
+    outline: 2px solid theme("colors.ink");
+    outline-offset: 2px;
+  }
+}
+
+@layer utilities {
+  /* Hairline rules are structural in this design, not decorative — used to
+     separate document sections the way a printed timing sheet does. */
+  .rule-t {
+    border-top: 1px solid theme("colors.rule");
+  }
+  .rule-b {
+    border-bottom: 1px solid theme("colors.rule");
+  }
+
+  /* Section label: small, tracked out, uppercase — the form-field voice. */
+  .label-caps {
+    @apply font-sans text-micro uppercase text-ink/60;
+  }
+}
+
+/* prefers-reduced-motion is a hard constraint (spec 11.1). The only genuine
+   animation in this UI is the alternate timeline drawing on; reduced motion
+   cross-fades instantly instead, and no layout transitions run. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -2606,3 +2606,86 @@ enough surface to build a real interface against; `RemovePitStop`
 decisions (SC exists only in Spanish, at lap ~8 with a long drift horizon,
 and Monaco, which is excluded from the gate) all have either a modelling
 or a data reason to wait. Next: Phase 6.
+
+## Phase 6 — Frontend (in progress)
+
+### 2026-08-04 — Design plan, and GapChart built to it
+
+Design plan written and reviewed before any component code (spec 11.1).
+Concept: **the official FIA session timing document, annotated** — warm
+paper stock, monospaced numerals, hairline rules, no decoration; the
+counterfactual layer as an editor's annotation on an official record.
+
+The decisive argument was functional rather than aesthetic, and worth
+recording because it inverts the obvious choice: spec 11.2 mandates team
+colours for driver lines, and 10+ saturated hues on a dark field all glow
+and stop separating. Neutral paper chrome makes team colour the only
+saturated thing on screen, which is exactly what should carry the data. So
+"not a dark dashboard with neon accents" isn't only about avoiding the
+template answer — the template answer actively fights the mandated encoding.
+
+**Palette** (6): `paper #F4F1EA`, `ink #1A1917`, `rule #C9C3B6`,
+`wash #E8E4DA`, `annotation #A33A2E` (counterfactual only, an oxide
+editor's-mark red, never a racing red and never a large fill), `caution
+#A8761F` (epistemic warning only). Two of the six exist because of things
+this project measured: `caution` has a job because
+`add_pit_stop_extrapolation_laps` and the drift horizon produce real numbers
+about where the model stops being trustworthy.
+
+**Typefaces** (3, one per content register): IBM Plex Mono for every numeral,
+Archivo for UI labels, Spectral for prose only. Three is justified because
+the content genuinely has three registers; the serif is quarantined to prose
+and is the one to cut if it starts appearing decoratively.
+
+**Four things resolved on review before building:**
+
+1. *The palette and 11.2 contradicted each other about driver lines.* Real
+   resolution: two chart modes, not one. **Field** = 20 drivers, team
+   colours, reality only, y auto-scaled to field spread. **Focus** = one
+   driver, ink vs oxide, y locked to those two lines so a sub-second margin
+   is visible. Different legends, different hover, different y-scale.
+2. *One annotation colour can't carry a multiverse.* Committed to **one
+   alternate at a time** on the chart, with the tree holding the branches —
+   a division of labour rather than a dodge, since a two-line chart at a
+   locked scale is the only place a 0.58s margin is readable. Palette stays
+   at six; no annotation ramp.
+3. *Mobile was hand-waved.* Real mechanism: minimum **14px per lap** with
+   both panes in a *single* horizontally-scrolling container, so shared-axis
+   alignment holds by construction rather than by synchronising two scroll
+   offsets. Verified at 375px: 14.0px/lap maintained, chart scrolls inside
+   its container, page itself does not overflow.
+4. *The stemma justification was dropped.* A stemma codicum reasons
+   *backward* — inferring a lost archetype from surviving variants — which
+   inverts the epistemics of running forward from a known record into
+   variants that never existed. Reframed as a **critical apparatus**
+   (received text plus variant readings), which points the right way and is
+   just the annotation metaphor extended. The rendering choices survive
+   intact since they stood on their own merits.
+
+**The variance split is surfaced, not merged.** Because the backend now
+separates pace variance from accumulated held-up time, the chart uses two
+distinct channels: a pace-only band (the band means *one* thing) and
+discrete tick marks where the clamp bound, so traffic reads as an event
+rather than as diffused uncertainty. Verified live at lap 60: the readout
+shows `real 0.0s / alt 0.6s / Δ +0.6s / held up (70% of runs)` — VER pinned
+at ~the fitted 0.58s floor, and the UI *says* he's held up rather than
+presenting that margin as a pace result.
+
+**Team colour vs legibility, resolved computationally** (`lib/teamColors.ts`):
+keep each team's hue, darken luminance until the line clears 3:1 against
+paper (WCAG non-text minimum, the right threshold for a chart line), and
+give teammates distinct dash patterns so a pair separates without colour at
+all. Verified live in field mode: 20 lines, 10 teams, 10 teammates dashed,
+worst contrast 3.02. Tests pin the floor and the hue preservation so a
+palette change can't quietly break either.
+
+**Data source, labelled honestly**: Phase 5's API isn't built, so
+`scripts/export_fixture.py` dumps the shapes it will serve, from the same
+pipeline functions, against real 2019 Hungary data and a real 60-seed
+counterfactual ensemble. The footer says so on screen. Swapping in the live
+endpoint is a data-source change, not a rewrite.
+
+Frontend: 5 tests. Backend: 166. Next: StrategyTimeline sharing the
+established lap axis, then DecisionPanel, Classification, and the apparatus
+tree last (with dummy-data legibility testing at depth 3+ before committing
+to its layout).
