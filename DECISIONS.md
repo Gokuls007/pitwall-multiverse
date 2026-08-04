@@ -2293,3 +2293,90 @@ already the catalogue's longest observed sample, so a one-stop version
 would need 60+-lap tyre life predicted from nothing), `counterfactual/
 diff.py`, and chasing the Monaco pit-loss anomaly or the small cross-
 catalogue bias to a root cause.
+
+### 2026-08-04 — AR1_PHI fitted (was a needless prior); the variance claim was backwards; the VER photo finish is clamp-manufactured
+
+Three corrections to the entry above, all from external review, all
+confirmed by direct measurement.
+
+**1. `AR1_PHI` was declared as a prior when it is directly and cheaply
+fittable — a Rule 1 violation of exactly the kind this project has spent
+several passes eliminating elsewhere.** It's the lag-1 autocorrelation of
+green-flag pace residuals, and the open-loop residuals needed to compute
+it already existed. Fitted properly (`scripts/fit_noise_autocorrelation.py`,
+now committed so the value is reproducible rather than hardcoded from a
+one-off): residuals taken within stints only (a stint boundary resets
+compound/tyre state, so residuals either side aren't the same persistence
+process) and between genuinely consecutive lap numbers only (cleaning
+drops in/out-laps, so a driver's usable laps have gaps; correlating across
+one would understate phi). Result across 5,373 pairs:
+
+| Race | n_pairs | phi |
+|---|---|---|
+| 2019 Hungarian | 1,179 | 0.641 |
+| 2019 Mexican | 1,130 | 0.452 |
+| 2019 Australian | 872 | 0.654 |
+| 2019 Monaco | 1,244 | 0.675 |
+| 2021 Spanish | 948 | 0.468 |
+| **Pooled** | **5,373** | **0.622** |
+
+`AR1_PHI = 0.622` now, replacing the by-feel 0.5. Per-race values span
+0.45-0.68 — real, consistent positive persistence everywhere, not a
+degenerate or noise-driven fit. The script also fails loudly if the
+constant drifts more than 0.05 from a re-fit, so this can't silently rot.
+
+**2. The stated reason for adopting AR(1) was backwards, and is
+retracted.** The previous entry said autocorrelated noise "doesn't compound
+into a random walk as fast as iid does" — the opposite is true. For a
+stationary AR(1) summed over n laps, `Var(sum) ≈ n·σ²·(1+φ)/(1−φ)`; at
+φ=0.622 that factor is 4.29, i.e. **~2.07x the iid standard deviation**
+over the same number of laps, not less. Positive autocorrelation means
+deviations persist and therefore accumulate *more*. The change is still
+correct — real scatter is measurably persistent (0.622, not 0), and
+modelling it as iid is simply wrong about the data — but it was adopted
+for a stated reason that had the sign inverted, and that reason should not
+be carried forward as justification. (The variance normalisation itself
+was already right: `innovation_std = pace_std_s * sqrt(1 - phi**2)`, so the
+*marginal* per-lap spread still equals the fitted `pace_std_s` rather than
+coming out ~15% too large.)
+
+**3. Following from (2): the VER demo's photo finish is manufactured by
+`MIN_FOLLOWING_GAP_S`, not produced by the pace models.** The arithmetic
+that should have been done and wasn't: with σ≈0.6 over ~20 post-fork laps
+and φ=0.622, each driver's cumulative noise should be several seconds and
+the *gap* between two drivers larger still — yet the observed final gap
+across the ensemble was 0.00-1.21s. Checked directly rather than assumed:
+
+- Noise *is* reaching cumulative time (std of VER's own final cumulative
+  time across the ensemble: 9.7s; HAM's: 5.0s — substantial, as expected).
+- But VER's `stuck_behind_clamped` flag fires on **40.7% of his post-fork
+  laps**, and his modal final gap is 0.30s — *exactly* `MIN_FOLLOWING_GAP_S`.
+
+So the gap between the two cars is being held at the floor by the
+stuck-behind constraint while their individual cumulative times vary by
+5-10s. **The honest framing of this demo is therefore: "VER closes to the
+limit of what the model can represent" — the closing trajectory is a real
+pace-model result, but the photo-finish margin is the constraint's floor
+value, and the win fraction is decided by overtake rolls at that floor,
+i.e. by `overtake_difficulty` (fitted from one race's passes) and driver
+skill (uniform 0.5, never fitted) almost alone.** Re-run with the fitted
+φ=0.622: VER wins 19/100 seeds (19%, down from 27% at φ=0.5), final gap
+0.00-2.32s. That 19% is a statement about one weakly-fitted parameter, not
+about the race — it should be presented that way or not headlined at all.
+
+**4. Pit loss: item closed, the concern was mine and it doesn't hold.**
+Quoted circuit pit-loss figures are pit-lane *transit* delta. This
+project's `fit_pit_loss` measures total excess over modelled pace across
+in-lap *and* out-lap, which additionally absorbs the cold-tyre out-lap
+deficit — real time genuinely lost, and specifically something the tyre
+model cannot represent, since `degradation_s(age)` is monotonically
+increasing from age 0 and so treats a fresh tyre as its fastest possible
+state. Fitted > quoted is therefore structurally expected, not evidence of
+bias, and the fitted value is the *right* one for the simulator because
+the same out-lap cost applies whenever the simulation pits. The
+consistent-direction excess noted in the previous entry (+0.96s to +8.13s)
+is that structural difference, not a systematic error to correct. Monaco's
++8.13s remains disproportionate and remains flagged. Product output should
+carry one line stating what the number includes.
+
+154 tests pass. `AddPitStop` next.

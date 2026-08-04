@@ -325,25 +325,45 @@ Phase 3 (validation) is a hard gate — no counterfactuals until replay reproduc
   genuine outcome variation to report a distribution per spec 6.10), so
   ten seeds differing only by overtake rolls all landed on the same "VER
   P2, 0.3s back" point. Fixed: default flipped to `include_noise=True`,
-  and the noise itself is now `lap_time.ar1_noise_s` — an AR(1) process
-  (`AR1_PHI=0.5`, declared prior) rather than iid, because iid noise over
-  a ~20-lap post-fork window is a random walk of similar size to the
-  effect being measured and would manufacture outcome variation rather
-  than honestly reveal it. Wired into `counterfactual/engine.py` only;
-  `simulation/engine.py`'s replay (noise off for Phase 3 validation
-  regardless) is unaffected. **Re-run with a real 100-seed ensemble: VER
-  wins in 27/100 seeds (27%)** — the actual multiverse-framing answer,
-  not the single point estimate the degenerate run produced. Presented
-  with the closing trajectory (pace/tyre models, held-out validated) and
-  the pass-completion question (`overtake_difficulty` + never-fitted
-  driver skill) explicitly separated by confidence level, not stated with
-  equal certainty.
+  and the noise itself is now `lap_time.ar1_noise_s` (AR(1), not iid —
+  real scatter is measurably persistent lap to lap). Wired into
+  `counterfactual/engine.py` only; `simulation/engine.py`'s replay (noise
+  off for Phase 3 validation regardless) is unaffected.
 
-  **Pit-loss check extended**: excess over commonly-cited figures is
-  same-direction across every race (never fitted below) but not uniform
-  in size — Hungarian +0.96s up to Monaco +8.13s, roughly an 8x range —
-  so there's a small possible systematic high bias worth noting everywhere,
-  and Monaco is disproportionate on top of it, not just its tail.
+  **`AR1_PHI` is fitted, not declared** — `scripts/fit_noise_autocorrelation.py`
+  measures it as the lag-1 autocorrelation of open-loop green-flag residuals
+  within stints, consecutive laps only: **0.622** pooled across 5,373 pairs
+  (per-race 0.45-0.68). An earlier version declared 0.5 as a prior, which
+  was a needless Rule 1 violation for something this directly measurable.
+  The script re-fits and fails loudly if the constant drifts >0.05, so it
+  can't silently rot. Also **retracted**: the claim that AR(1) reduces
+  cumulative drift versus iid — it's the opposite (`Var(sum) ≈
+  n·σ²·(1+φ)/(1−φ)`, so ~2.07x the iid std at φ=0.622). The change is still
+  right (iid is wrong about the data) but the stated reason had the sign
+  inverted.
+
+  **The VER photo finish is manufactured by `MIN_FOLLOWING_GAP_S`, not
+  produced by the pace models** — checked, not assumed. Noise does reach
+  cumulative time (VER's own final cumulative time varies 9.7s std across
+  the ensemble; HAM's 5.0s), but VER's `stuck_behind_clamped` flag fires on
+  **40.7% of post-fork laps** and his modal final gap is 0.30s — exactly the
+  floor. So the *closing trajectory* is a real pace-model result, but the
+  photo-finish margin is the constraint's floor value and the win fraction
+  (19/100 seeds at the fitted φ, down from 27% at φ=0.5) is decided by
+  overtake rolls at that floor — i.e. by `overtake_difficulty` (one race's
+  sample) and never-fitted driver skill almost alone. Honest framing: "VER
+  closes to the limit of what the model can represent." The 19% is a
+  statement about one weakly-fitted parameter, not about the race.
+
+  **Pit-loss item closed** (the concern didn't hold): quoted circuit figures
+  are pit-lane *transit* delta, while `fit_pit_loss` measures total excess
+  over modelled pace across in- and out-lap, which also absorbs the
+  cold-tyre out-lap deficit — real time the tyre model structurally can't
+  represent (`degradation_s` is monotonic from age 0, so a fresh tyre is
+  its fastest state). Fitted > quoted is expected, and the fitted value is
+  the correct one for the simulator. Monaco's +8.13s remains
+  disproportionate and flagged. Product output needs one line saying what
+  the number includes.
 
   154 tests pass. Not done: `AddPitStop` (correctly reprioritised ahead of
   `RemovePitStop` — interpolation vs. extrapolation, same reasoning as the

@@ -118,16 +118,28 @@ def noise_s(rng: np.random.Generator, pace_std_s: float) -> float:
     return float(rng.normal(0.0, pace_std_s))
 
 
-# Not fitted — a declared prior (Part 14 rule 1): this project's ingestion
-# has no per-lap noise-autocorrelation measurement to fit against. Real
-# lap-time scatter persists across laps (a driver in a rhythm, track
-# evolution, fuel/tyre state, traffic) rather than resetting independently
-# every lap; iid noise accumulated into cumulative time over many laps is a
-# random walk that overstates realistic field spread (see DECISIONS.md).
-# 0.5 is a moderate, disclosed persistence — not zero (iid), not close to 1
-# (near-permanent pace state) — chosen as a reasonable middle rather than a
-# measured value.
-AR1_PHI = 0.5
+# Fitted, not a declared prior — an earlier version of this comment called
+# it undeclarable and picked 0.5 by feel, which was exactly the Rule 1
+# violation this project has spent several passes stamping out elsewhere.
+# It's directly measurable: the lag-1 autocorrelation of open-loop
+# green-flag residuals (real lap time minus the deterministic clean-air
+# prediction) between consecutive laps *within the same stint* (a stint
+# boundary resets tyre/compound state, so residuals either side of one
+# aren't the same persistence process). Pooled across all 5 catalogue
+# races, 5,373 consecutive-lap pairs: phi = 0.622. See
+# `scripts/fit_noise_autocorrelation.py` for the exact computation.
+#
+# This also means an earlier claim in this codebase was backwards: positive
+# autocorrelation *increases* cumulative variance relative to iid, it
+# doesn't dampen it. For a stationary AR(1) process summed over n laps,
+# Var(sum) ~= n * sigma^2 * (1+phi)/(1-phi) for large n — at phi=0.622 that
+# factor is ~4.3, i.e. ~2.1x the iid standard deviation over the same
+# number of laps, not less. The correction is still the right one (real
+# lap-time scatter is measurably persistent, and modelling it as iid is
+# simply wrong), but it was adopted for the wrong stated reason — see
+# DECISIONS.md for the retraction and what it changes about how the
+# counterfactual ensemble's drift should be read.
+AR1_PHI = 0.622
 
 
 def ar1_noise_s(rng: np.random.Generator, pace_std_s: float, prev_noise_s: float, phi: float = AR1_PHI) -> float:
@@ -135,13 +147,13 @@ def ar1_noise_s(rng: np.random.Generator, pace_std_s: float, prev_noise_s: float
     innovation's own standard deviation scaled so the *stationary* variance
     still equals `pace_std_s` — i.e. at any single lap in isolation this
     has the same spread as `noise_s`'s iid draw, but consecutive laps are
-    correlated, so a run of laps doesn't accumulate as fast as an iid
-    random walk would (see DECISIONS.md's counterfactual-ensemble entry:
-    the drift-horizon measurement this replaces an iid assumption for).
-    Used by `counterfactual/engine.py` for ensemble stochasticity, not by
-    `simulation/engine.py`'s replay (Phase 3 validation runs noise off
-    entirely — see `compose_lap_time_s`'s docstring — so this never
-    engages there regardless).
+    correlated (see `AR1_PHI`'s comment for why that increases, not
+    decreases, cumulative spread over many laps relative to iid — this is
+    matching a real, measured property of lap-time scatter, not adopting
+    it to shrink drift). Used by `counterfactual/engine.py` for ensemble
+    stochasticity, not by `simulation/engine.py`'s replay (Phase 3
+    validation runs noise off entirely — see `compose_lap_time_s`'s
+    docstring — so this never engages there regardless).
     """
     if pace_std_s <= 0:
         return 0.0
