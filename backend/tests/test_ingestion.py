@@ -48,8 +48,8 @@ EXPECTED = {
     "2018_australian": (58, ["VET", "HAM", "RAI", "RIC", "ALO"], []),
     "2019_singapore": (61, ["VET", "LEC", "VER", "HAM", "BOT"], []),
     "2019_monaco": (78, ["HAM", "VET", "BOT", "VER", "GAS"], []),
-    "2021_british": (52, ["HAM", "LEC", "BOT", "NOR", "RIC"], []),
     "2019_hungarian": (70, ["HAM", "VER", "VET", "LEC", "SAI"], []),
+    "2021_spanish": (66, ["HAM", "VER", "BOT", "LEC", "PER"], []),
 }
 
 

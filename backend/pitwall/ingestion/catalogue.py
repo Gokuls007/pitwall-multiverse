@@ -118,19 +118,23 @@ CATALOGUE: tuple[CatalogueEntry, ...] = (
     ),
     CatalogueEntry(
         year=2021,
-        event_name="British Grand Prix",
-        fastf1_event_identifier="Great Britain",
-        circuit="Silverstone Circuit",
+        event_name="Spanish Grand Prix",
+        fastf1_event_identifier="Spain",
+        circuit="Circuit de Barcelona-Catalunya",
         contested_decision=(
-            "A first-lap collision between Verstappen and Hamilton brought out a red flag. "
-            "Hamilton took a 10-second penalty for the incident but still won from the "
-            "restart, re-fitting fresh tyres for what was effectively a second sprint to "
-            "the flag."
+            "Verstappen passed Hamilton at the start and controlled the race from the "
+            "front. Mercedes reacted with an early second stop for Hamilton on lap 42 for "
+            "a fresh set, while Red Bull left Verstappen out on ageing tyres until lap 60 — "
+            "handing Hamilton a ~24-lap tyre-life advantage he used to reel in and pass "
+            "Verstappen for the win in the closing laps. A brief early safety car (laps "
+            "8-10) is unrelated to the winning decision, unlike British GP 2021's red flag."
         ),
         decision_points=(
-            DecisionPointHint("safety_car", None, 1, "The lap-1 red flag stoppage"),
             DecisionPointHint(
-                "pit_stop", "HAM", 1, "Hamilton's tyre choice at the red-flag restart"
+                "pit_stop", "HAM", 42, "Hamilton's early second stop that set up the chase"
+            ),
+            DecisionPointHint(
+                "pit_stop", "VER", 60, "Verstappen's much later second stop, arguably too late"
             ),
         ),
     ),

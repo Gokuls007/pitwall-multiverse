@@ -109,6 +109,55 @@ Newest entries at the bottom of each phase section.
   Replaced with 2019 Hungarian GP (above), a genuinely strategy-decided race
   with no confounding SC/VSC/red-flag periods at all.
 
+- **2026-08-03 — 2021 British GP also removed from the catalogue; replaced
+  with 2021 Spanish GP.** Same defect as Abu Dhabi 2021, caught on review
+  before Phase 2: Silverstone 2021 was decided by a lap-1 collision, a red
+  flag, and a 10-second stewards' penalty — not a pit-strategy decision. It is
+  also *worse* than Abu Dhabi in one respect: a red flag forces a standing
+  restart with a free tyre change, and the spec's `TrackStatus`/`SafetyCarPeriod`
+  enum lists `RED` (Part 5.1) but Part 6.8 never describes what a red flag does
+  to the simulation (no restart/free-tyre-change model exists). Modelling it
+  properly is out of scope for this project's Decision types (Part 5.3 has
+  nothing for "restart from a red flag"). 2021 Spanish GP replaces it: Verstappen
+  led from the front after passing Hamilton at the start, Mercedes reacted with
+  an early second stop for Hamilton (lap 42) while Red Bull left Verstappen out
+  on ageing tyres until lap 60, and Hamilton used the ~24-lap tyre-life
+  advantage to pass Verstappen for the win. Verified: dry (MEDIUM/SOFT only),
+  20/20 drivers, a brief unrelated SC (laps 8-10, ~50 laps before the decision
+  that actually won the race) that doesn't confound the outcome. Also verified
+  Verstappen's stint in **2019 Hungarian GP** directly against raw FastF1 rows
+  while investigating this: the 42-lap stint from lap 26-67 is HARD, not
+  MEDIUM (the medium stint was laps 1-25, ending at that pit-in) — `_build_stints`'
+  per-Stint-column majority vote was correct; no mislabeling, no fix needed.
+
+- **2026-08-03 — `DriverEntry.finish_position` comment corrected; validation
+  treatment of classified-but-retired drivers decided now, ahead of Phase 3.**
+  The old "None if DNF" comment on `finish_position` (`domain/race.py`) was
+  wrong: F1 classifies a retiree who completed >=90% of race distance at the
+  position they stopped (e.g. Grosjean, P20, "Water pressure", 2019 Hungary;
+  Pérez/Latifi/Giovinazzi/Russell/Räikkönen, Abu Dhabi 2021) — `finish_position`
+  is an int alongside a non-"Finished" status in exactly this case, and that's
+  correct, not a bug. `None` only means never classified at all (withdrew before
+  the race started, e.g. Mazepin's "Illness" at Abu Dhabi 2021).
+  **Consequence flagged for Part 8's outcome metrics, decided now rather than
+  discovered as an unexplained validation failure at the Phase 3 gate:** a
+  classified-but-retired driver's *real* position reflects where they were on
+  track when they stopped racing, lap 20 or lap 60, but the simulator (per Part
+  7.6/Part 9) will keep simulating them to the chequered flag under whatever
+  decisions are in force. Comparing the simulator's lap-70 position for a
+  driver who actually stopped at lap 60 against their classified real position
+  is not a fair test of the simulator and would silently drag down rank
+  correlation / position-match metrics for reasons that have nothing to do with
+  model quality. **Decision:** `validation/metrics.py` (Phase 3) must exclude
+  classified-but-retired drivers (`DriverEntry.status not in {"Finished"} and
+  not status.startswith("+")`, with `finish_position is not None`) from the
+  exact-position and within-one-position outcome metrics, reporting them
+  separately with their retirement lap and cause — consistent with Part 7.3's
+  existing treatment of retirements as exogenous and preserved at the same lap.
+  They remain fully modelled in the simulation itself (position, gap, etc. up
+  to their retirement lap); they're excluded only from the final-classification
+  comparison metrics.
+
 - **2026-08-03 — `DriverEntry` lives in `domain/race.py`, not a separate
   `domain/driver.py` as Part 3's layout diagram shows.** This was already the
   case from Phase 0 scaffolding (not re-decided here); noting it now because

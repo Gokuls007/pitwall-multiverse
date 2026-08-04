@@ -62,7 +62,14 @@ class DriverEntry:
     number: int
     team: str
     grid_position: int
-    finish_position: int | None  # None if DNF
+    # int even for many retirements: F1 classifies a driver who completed >=90% of
+    # the race distance (e.g. Grosjean, P20, "Water pressure" DNF, 2019 Hungary)
+    # at their position when they stopped. None only when never classified at all
+    # (e.g. withdrew before the race started, like Mazepin's "Illness" at Abu Dhabi
+    # 2021 — he has zero laps and no position). See DECISIONS.md, Phase 1, for how
+    # `validation/` (Part 8) must treat classified-but-retired drivers in the
+    # position-comparison metrics.
+    finish_position: int | None
     status: str  # "Finished", "+1 Lap", "Accident", etc.
     retired_on_lap: int | None
 

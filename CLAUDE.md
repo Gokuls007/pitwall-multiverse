@@ -115,10 +115,11 @@ Phase 3 (validation) is a hard gate — no counterfactuals until replay reproduc
   safety_car, catalogue) implemented; 5-race catalogue curated and each race's
   driver counts, finishing order, and DNFs verified against FastF1's own
   `session.results`. Catalogue: 2018 Australian, 2019 Singapore, 2019 Monaco,
-  2021 British, 2019 Hungarian — all strategy/physics-decided, none resolved by
-  a stewarding judgement call (Abu Dhabi 2021 was deliberately excluded for
-  this reason; see DECISIONS.md). Abu Dhabi 2021's SC (L53-57) and VSC (L36-37)
-  periods are still verified against `race_control_messages` as an ingestion
-  test fixture. Run `python backend/scripts/prefetch_races.py` to (re)warm the
-  cache and print the cleaning report for every race.
+  2019 Hungarian, 2021 Spanish — all strategy/physics-decided, none resolved by
+  a stewarding judgement call or a red flag (Abu Dhabi 2021 and British GP 2021
+  were both deliberately excluded for this reason; see DECISIONS.md). Abu Dhabi
+  2021's SC (L53-57) and VSC (L36-37) periods are still verified against
+  `race_control_messages` as an ingestion test fixture. Run `python
+  backend/scripts/prefetch_races.py` to (re)warm the cache and print the
+  cleaning report for every race.
 - Phase 2 (parameter fitting): not started.
