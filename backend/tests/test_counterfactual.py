@@ -27,8 +27,9 @@ import pytest
 warnings.filterwarnings("ignore")
 
 from pitwall.counterfactual.engine import fork_and_simulate, simulate_counterfactual  # noqa: E402
-from pitwall.counterfactual.strategy import apply_decision  # noqa: E402
-from pitwall.domain.decision import ChangePitLap  # noqa: E402
+from pitwall.counterfactual.strategy import add_pit_stop_extrapolation_laps, apply_decision  # noqa: E402
+from pitwall.domain.decision import AddPitStop, ChangePitLap  # noqa: E402
+from pitwall.domain.enums import Compound  # noqa: E402
 from pitwall.ingestion.catalogue import get_entry  # noqa: E402
 from pitwall.ingestion.loader import load_race  # noqa: E402
 from pitwall.parameters.fit_all import fit_catalogue_with_pooled_dirty_air  # noqa: E402
@@ -141,3 +142,117 @@ def test_change_pit_lap_earlier_shortens_first_stint_and_shifts_second(hungary_2
     # reality -- their compound must reflect the counterfactual, not reality.
     assert overrides[("HAM", 30)].compound == real_stint2_compound
     assert real_by_key[("HAM", 30)].compound != real_stint2_compound
+
+
+# ---------------------------------------------------------------------------
+# AddPitStop (spec 5.3). Built before RemovePitStop deliberately: adding a
+# stop *shortens* the stints it splits, so every simulated lap sits at a
+# tyre age the driver's own data already covers (interpolation), whereas
+# removing one extrapolates past the longest observed stint. See
+# DECISIONS.md and strategy.py's module docstring.
+# ---------------------------------------------------------------------------
+
+
+def test_add_pit_stop_splits_the_stint_and_resets_tyre_age(hungary_2019):
+    # VER's real second stint runs laps 26-67 on HARDs. Adding a stop on
+    # lap 50 should make 50 an in-lap on the old compound, then start a
+    # fresh SOFT stint from 51 with tyre age counting from 1.
+    snapshot, _ = hungary_2019
+    decision = AddPitStop(driver="VER", lap=50, compound=Compound.SOFT)
+    overrides = apply_decision(snapshot, decision)
+
+    real_by_key = {(lap.driver, lap.lap_number): lap for lap in snapshot.laps}
+    assert overrides[("VER", 50)].is_in_lap
+    assert overrides[("VER", 50)].compound == real_by_key[("VER", 50)].compound  # still the old tyre
+    assert overrides[("VER", 51)].is_out_lap
+    assert overrides[("VER", 51)].compound == Compound.SOFT
+    assert overrides[("VER", 51)].tyre_life == 1
+    assert overrides[("VER", 55)].tyre_life == 5
+    assert overrides[("VER", 55)].compound == Compound.SOFT
+
+
+def test_add_pit_stop_shortened_original_stint_stays_within_observed_range(hungary_2019):
+    # The part of "adding a stop is interpolation" that IS true: every lap
+    # of the *shortened original* stint sits at a tyre age the driver
+    # already ran, because shortening can only reduce the ages requested.
+    snapshot, _ = hungary_2019
+    decision = AddPitStop(driver="VER", lap=50, compound=Compound.SOFT)
+    overrides = apply_decision(snapshot, decision)
+
+    max_real_age_by_compound: dict[Compound, int] = {}
+    for lap in snapshot.laps:
+        if lap.driver != "VER":
+            continue
+        current = max_real_age_by_compound.get(lap.compound, 0)
+        max_real_age_by_compound[lap.compound] = max(current, lap.tyre_life)
+
+    original_stint_laps = {
+        lap_number: o for (_, lap_number), o in overrides.items() if lap_number <= decision.lap
+    }
+    assert original_stint_laps
+    for lap_number, overridden in original_stint_laps.items():
+        observed_max = max_real_age_by_compound[overridden.compound]
+        assert overridden.tyre_life <= observed_max, (
+            f"lap {lap_number}: shortening a stint should never raise the tyre age requested, "
+            f"but got {overridden.tyre_life} > observed max {observed_max}"
+        )
+
+
+def test_add_pit_stop_reports_new_stint_extrapolation_rather_than_hiding_it(hungary_2019):
+    # The part that ISN'T true, pinned as a measured limitation: the new
+    # stint runs to the next real stop and can far exceed the driver's real
+    # sample on that compound. VER ran SOFT for only 6 laps in 2019 Hungary,
+    # so a SOFT stint from lap 51 to 66 asks for ages well past that. This
+    # must be reported, not silently answered.
+    snapshot, _ = hungary_2019
+    decision = AddPitStop(driver="VER", lap=50, compound=Compound.SOFT)
+
+    extrapolated = add_pit_stop_extrapolation_laps(snapshot, decision)
+    assert extrapolated > 0, "expected this case to extrapolate; if not, the premise here changed"
+
+    # A short new stint on a compound the driver ran extensively should not
+    # extrapolate at all -- confirms the helper discriminates rather than
+    # always reporting a positive number.
+    ver_hard_max = max(
+        lap.tyre_life for lap in snapshot.laps if lap.driver == "VER" and lap.compound == Compound.HARD
+    )
+    assert ver_hard_max > 10  # sanity: VER's real HARD stint was long
+    short_hard = AddPitStop(driver="VER", lap=60, compound=Compound.HARD)
+    assert add_pit_stop_extrapolation_laps(snapshot, short_hard) == 0
+
+
+def test_add_pit_stop_rejects_a_lap_already_in_a_real_pit_sequence(hungary_2019):
+    snapshot, _ = hungary_2019
+    with pytest.raises(ValueError):
+        apply_decision(snapshot, AddPitStop(driver="VER", lap=67, compound=Compound.SOFT))  # real in-lap
+
+
+def test_add_pit_stop_rejects_a_lap_with_no_room_before_the_next_real_stop(hungary_2019):
+    # VER's next real stop after his lap-26 out-lap is lap 67; adding one on
+    # lap 66 leaves no room for an out-lap before it.
+    snapshot, _ = hungary_2019
+    with pytest.raises(ValueError):
+        apply_decision(snapshot, AddPitStop(driver="VER", lap=66, compound=Compound.SOFT))
+
+
+def test_add_pit_stop_runs_end_to_end_and_costs_time_in_the_near_term(hungary_2019):
+    # An extra stop is a real time loss on the laps around it. Checked
+    # deterministically (noise off) so this asserts the mechanism, not a
+    # lucky sample: VER's cumulative time a few laps after the added stop
+    # must exceed the override-free fork's at the same lap.
+    snapshot, params = hungary_2019
+    decision = AddPitStop(driver="VER", lap=50, compound=Compound.SOFT)
+    with_stop = simulate_counterfactual(snapshot, params, decision, seed=0, include_noise=False)
+    without = fork_and_simulate(
+        snapshot, params, overrides={}, first_affected_lap=decision.first_affected_lap, seed=0, include_noise=False
+    )
+
+    def cumulative(result, lap_number):
+        return next(
+            (s.cumulative_time_s for s in result.lap_states if s.driver == "VER" and s.lap_number == lap_number),
+            None,
+        )
+
+    with_stop_t, without_t = cumulative(with_stop, 53), cumulative(without, 53)
+    assert with_stop_t is not None and without_t is not None
+    assert with_stop_t > without_t, "an added pit stop must cost time in the laps immediately following it"

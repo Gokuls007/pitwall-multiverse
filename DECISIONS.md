@@ -2380,3 +2380,118 @@ is that structural difference, not a systematic error to correct. Monaco's
 carry one line stating what the number includes.
 
 154 tests pass. `AddPitStop` next.
+
+### 2026-08-04 — Clamp-dependency checks: the closed form doesn't hold, ratcheting confirmed
+
+Two checks before moving on, both suggested by review. One refutes my own
+previous framing *and* the hypothesis behind the check; the other confirms
+a real mechanism.
+
+**1. The win fraction is NOT a closed-form function of `overtake_difficulty`
+at the floor — my previous entry overstated this, and the proposed
+`1-(1-p)^n` check does not reproduce it either.** Measured: VER spends a
+mean 8.54 post-fork laps clamped (range 0-17), mean pace delta on those
+laps 0.16s, `overtake_difficulty` 0.9376. That gives `p` per lap of 0.0046
+and `1-(1-p)^8.5 = 3.87%` — against an observed 19%. Recomputing with each
+lap's *actual* pace delta rather than the mean (still from recorded state)
+gives 5.58%. Still nowhere near 19%.
+
+Why: **the passes don't happen at the floor at all.** Inspecting every
+winning seed, VER takes the lead on laps 54-70 with a pace delta of
+0.4-1.7s and `stuck_behind_clamped=False` on that lap in every single case.
+The win is driven by the *tail* of the AR(1) noise distribution — laps
+where VER's draw happens to give him a large one-lap advantage — not by
+repeated rolls at a pinned 0.16s delta. So the 19% depends jointly on the
+now-fitted noise model (`pace_std_s`, `AR1_PHI=0.622`) and on
+`overtake_difficulty`, rather than reducing to the latter alone.
+
+The reconstruction is also structurally biased low and can't be fixed from
+stored state: `resolve_positions` evaluates the pass roll using the
+*pre-clamp* lap time, but `LapState.lap_time_s` records the post-clamp
+value, so the deltas the rolls actually saw aren't recoverable after the
+fact. A clean version of this check would need the roll inputs recorded at
+decision time. **Conclusion: the dependency on `overtake_difficulty` is
+real and the 19% should still be treated as soft, but the specific claim
+that it "carries no information from anything else in the model" is
+withdrawn — it demonstrably carries the noise model too.**
+
+**2. Ratcheting confirmed.** Post-fork cumulative-time growth over the 20
+remaining laps: HAM std = 5.33s, against an AR(1) prediction of
+`0.6 * sqrt(20 * (1+0.622)/(1-0.622)) ≈ 5.56s` — a good match, so the
+noise model behaves as derived for an unclamped driver. VER's std is 8.22s,
+and `corr(n_clamped_laps, VER cumulative growth) = 0.855`. The clamp adds
+`MIN_FOLLOWING_GAP_S - gap` to the follower's cumulative time and never
+returns it, so firings accumulate one-sidedly, inflating both the mean and
+the variance of a clamped driver's total time.
+
+Whether this is a bug is genuinely arguable and is recorded rather than
+silently "fixed": being held up behind a car you can't pass *does* cost
+real time permanently in reality, so a one-sided addition is defensible on
+physical grounds. What it definitely means is that **a clamped driver's
+cumulative time is not a clean measure of their pace** — it's pace plus
+accumulated held-up penalty — so it shouldn't be read as one, and the
+excess variance above the AR(1) prediction is entirely clamp-induced rather
+than a noise-model property.
+
+**3. `MIN_FOLLOWING_GAP_S = 0.3` is now load-bearing for product output and
+still hasn't passed an empirical check** (its original bucket had n=9,
+stderr 0.335). It is the headline margin the tool reports whenever a
+counterfactual succeeds in bringing a car into contention — which review
+correctly identifies as the *modal* interesting case, not an edge case.
+Options recorded, not chosen: fit it as a low percentile (e.g. 5th) of
+observed real `gap_to_ahead_s` across the catalogue, which is a defensible
+operational definition of "as close as cars actually get"; or label it in
+the UI explicitly as a representable floor rather than a predicted margin.
+Flagged as the highest-value remaining calibration item.
+
+**4. Framing note on `AR1_PHI = 0.622`**: autocorrelated residuals are the
+classic signature of a missing regressor, not only of driver rhythm. So
+0.622 is an upper bound that absorbs whatever persistent effects the model
+doesn't capture (track evolution, sustained traffic, a stint-level pace
+offset). It's the right value to *simulate* with — it reproduces the
+observed scatter structure — but it is "unexplained persistence," not a
+physical constant, and shouldn't be described as one.
+
+**Scope consequence for Phase 6**: because pinning at the floor is the
+modal outcome for any counterfactual that works, the tool can answer "does
+this bring the car into contention?" — resting on the held-out-validated
+pace and tyre models — but not "does it change the finishing order?",
+which rests on `overtake_difficulty` and a never-fitted skill prior. The UI
+should be built to make the first claim, not the second.
+
+### 2026-08-04 — AddPitStop implemented; its interpolation-safety premise was too strong
+
+Implemented `AddPitStop` in `counterfactual/strategy.py`, ahead of
+`RemovePitStop`, on the reasoning that adding a stop shortens stints
+(interpolation) while removing one lengthens them past the catalogue's
+longest observed sample (extrapolation from nothing).
+
+**A test written for that premise immediately falsified half of it.**
+`AddPitStop` shortens the *original* stint it splits — those laps are
+genuinely interpolation-safe, since shortening can only lower the tyre ages
+requested. But the *new* stint it creates runs from the added stop to the
+driver's next real stop (or the finish), and that can far exceed how long
+the driver actually ran the chosen compound. Concretely: VER ran SOFT for
+only 6 laps in 2019 Hungary, so adding a SOFT stop on lap 50 asks the model
+for SOFT ages up to 17 — real extrapolation, in the direction the whole
+decision was chosen to avoid. So "adding a stop is interpolation" is
+**directionally** right versus removing one, not unconditionally true, and
+the original framing (mine, carried from the demo-selection reasoning)
+overstated it.
+
+Rather than silently answer past the evidence, added
+`strategy.add_pit_stop_extrapolation_laps(snapshot, decision)`: returns how
+many laps of the resulting stint sit at a tyre age beyond anything that
+driver ran on that compound. 0 means fully in range. Two tests pin both
+halves — the shortened original stint stays in range, and the helper
+reports a positive count for the VER/SOFT case while returning exactly 0
+for a short HARD stint (confirming it discriminates rather than always
+flagging). Phase 6 should surface a non-zero value alongside any
+`AddPitStop` result rather than presenting it with the same confidence as
+an in-range one.
+
+`RemovePitStop` remains deliberately unimplemented for the reason above,
+now with a measured illustration of why the concern is real rather than
+theoretical.
+
+166 tests pass.
