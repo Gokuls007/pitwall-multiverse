@@ -2215,3 +2215,81 @@ binary win/lose flip would be.
 147 tests pass (unchanged count; two tests rewritten, not added). Not done
 this pass: `counterfactual/diff.py`, the remaining five decision types, and
 chasing the Monaco pit-loss anomaly to a cause.
+
+### 2026-08-04 — The VER demo's ensemble was degenerate; noise-on + AR(1) fixes it; a real distribution
+
+External review caught that the VER demo's "10-seed ensemble, VER finishes
+P2 every time" wasn't a distribution — `simulate_counterfactual` defaulted
+to `include_noise=False` (the validation-appropriate default, carried over
+from `replay_ensemble`'s reasoning without reconsidering whether it applied
+here), so the only stochasticity across seeds was overtake-resolution
+rolls; the ten seeds were ten samples of one deterministic trajectory, not
+a distribution over outcomes. Spec 6.10 requires counterfactual results
+reported as distributions, and "X finishes ahead in N% of universes" is
+this project's own multiverse framing — a near-degenerate ensemble can't
+produce that.
+
+**Fixed the default** (`simulate_counterfactual(include_noise=True)`, was
+`False`) with the correct reasoning stated explicitly this time: validation
+asks "is the deterministic pace prediction accurate" (noise can only
+inflate that answer, spec 8.3); a counterfactual is a product output that
+needs genuine outcome variation to report a distribution at all. These are
+different questions and should have different defaults — the earlier
+`False` default applied validation's reasoning to a case it doesn't fit.
+
+**But iid noise over a fork is close in magnitude to the effect being
+measured** — flagged directly: `sigma~=0.6` over ~20 post-fork laps is a
+random walk of a similar size to the closing-gap effect in the VER demo,
+so iid noise risks manufacturing the very outcome variation it's supposed
+to measure honestly, not revealing it. Fixed with `lap_time.ar1_noise_s`:
+an AR(1) process (`new = phi * prev + innovation`, innovation scaled so
+the *stationary* variance still equals `pace_std_s`) — real lap-time
+scatter persists across laps (rhythm, track evolution, tyre/fuel state)
+rather than resetting independently every lap, and autocorrelated noise
+doesn't compound into a random walk as fast as iid does over the same
+number of laps. `AR1_PHI = 0.5` is a declared, disclosed prior (Part 14
+rule 1) — no per-lap autocorrelation measurement exists in this project's
+ingestion to fit it from data. Wired into `counterfactual/engine.py` only
+(threaded per-driver `prev_noise_s` state through the forward loop);
+`simulation/engine.py`'s replay is unaffected (Phase 3 validation runs
+noise off entirely regardless, so this was never going to engage there).
+
+**Re-ran the VER demo with a real 100-seed ensemble, noise + AR(1) on**:
+VER wins in 27/100 seeds (27%), finishes P2 in the remaining 73%; final
+gap to leader ranges 0.00-1.21s (mean 0.24s, median 0.30s) across the
+ensemble. This is the answer spec 6.10 and this project's own multiverse
+framing actually call for — "Verstappen wins in roughly a quarter of
+simulated universes" — not the single "P2, 0.3s back" point estimate the
+first (noise-off, effectively degenerate) ensemble produced.
+
+**Reframed what the demo is actually confident about**, per the same
+review: the closing trajectory (VER from ~20s back to a photo finish) is
+driven by the pace and tyre models, which have real held-out validation
+behind them now. Whether he *completes the pass* is decided by
+`overtake_difficulty` (fitted from one race's observed passes — a small
+sample) and driver skill (`overtake_skill`/`defence_skill`, uniform 0.5,
+never fitted — spec 6.7 explicitly permits this as a prior). The 27%
+figure should be presented as resting on the less-validated half of the
+model, not with the same confidence as the closing-gap trajectory itself.
+
+**Pit-loss check extended**: is the bias uniform across the catalogue (in
+which case Monaco is just the tail of a shared shift) or Monaco-specific?
+Excess over commonly-cited figures (general knowledge, not a verified
+source): Hungarian +0.96s, Mexican +2.73s, Australian +3.80s, Monaco
++8.13s, Spanish +2.65s. Every race is biased in the same direction (never
+fitted *below* the commonly-cited figure) — itself worth noting as a
+possible small systematic effect worth one line in product output — but
+the magnitude is not uniform (0.96s to 8.13s, roughly an 8x range), so
+Monaco isn't simply the worst end of one shared bias; its excess is
+disproportionate even relative to the modest, consistent-direction effect
+seen everywhere else.
+
+154 tests pass (147 + 4 new AR(1) tests + 3 modified for the new default
+where they explicitly needed `include_noise=False`). Not done this pass:
+`AddPitStop` (correctly reprioritised ahead of `RemovePitStop` — shortening
+a stint via an added stop is interpolation within observed tyre ages,
+while removing a stop lengthens one, and VER's real 42-lap stint is
+already the catalogue's longest observed sample, so a one-stop version
+would need 60+-lap tyre life predicted from nothing), `counterfactual/
+diff.py`, and chasing the Monaco pit-loss anomaly or the small cross-
+catalogue bias to a root cause.

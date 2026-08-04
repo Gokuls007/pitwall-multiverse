@@ -118,6 +118,37 @@ def noise_s(rng: np.random.Generator, pace_std_s: float) -> float:
     return float(rng.normal(0.0, pace_std_s))
 
 
+# Not fitted — a declared prior (Part 14 rule 1): this project's ingestion
+# has no per-lap noise-autocorrelation measurement to fit against. Real
+# lap-time scatter persists across laps (a driver in a rhythm, track
+# evolution, fuel/tyre state, traffic) rather than resetting independently
+# every lap; iid noise accumulated into cumulative time over many laps is a
+# random walk that overstates realistic field spread (see DECISIONS.md).
+# 0.5 is a moderate, disclosed persistence — not zero (iid), not close to 1
+# (near-permanent pace state) — chosen as a reasonable middle rather than a
+# measured value.
+AR1_PHI = 0.5
+
+
+def ar1_noise_s(rng: np.random.Generator, pace_std_s: float, prev_noise_s: float, phi: float = AR1_PHI) -> float:
+    """Autocorrelated pace noise: `new = phi * prev + innovation`, with the
+    innovation's own standard deviation scaled so the *stationary* variance
+    still equals `pace_std_s` — i.e. at any single lap in isolation this
+    has the same spread as `noise_s`'s iid draw, but consecutive laps are
+    correlated, so a run of laps doesn't accumulate as fast as an iid
+    random walk would (see DECISIONS.md's counterfactual-ensemble entry:
+    the drift-horizon measurement this replaces an iid assumption for).
+    Used by `counterfactual/engine.py` for ensemble stochasticity, not by
+    `simulation/engine.py`'s replay (Phase 3 validation runs noise off
+    entirely — see `compose_lap_time_s`'s docstring — so this never
+    engages there regardless).
+    """
+    if pace_std_s <= 0:
+        return 0.0
+    innovation_std = pace_std_s * (1.0 - phi**2) ** 0.5
+    return phi * prev_noise_s + float(rng.normal(0.0, innovation_std))
+
+
 def compose_lap_time_s(
     *,
     driver_params: DriverParams,

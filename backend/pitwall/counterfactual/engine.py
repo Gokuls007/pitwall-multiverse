@@ -17,7 +17,7 @@ from pitwall.domain.decision import Decision
 from pitwall.domain.race import LapRecord, RaceParameters, RaceSnapshot
 from pitwall.domain.result import LapState, SimulationResult
 from pitwall.simulation.engine import DIRTY_AIR_FLAG_THRESHOLD_S, _final_classification, _track_status_for_lap
-from pitwall.simulation.lap_time import compose_lap_time_s
+from pitwall.simulation.lap_time import ar1_noise_s, compose_lap_time_s
 from pitwall.simulation.pit import pit_stop_noise_s
 from pitwall.simulation.position import compute_gaps_to_leader, reorder_pitting_drivers, resolve_positions
 from pitwall.simulation.rng import make_rng
@@ -30,13 +30,23 @@ def simulate_counterfactual(
     race_params: RaceParameters,
     decision: Decision,
     seed: int,
-    include_noise: bool = False,
+    include_noise: bool = True,
 ) -> SimulationResult:
-    """`include_noise` defaults to False here, opposite of
-    `simulation.engine.simulate_replay` — a counterfactual answer is the
-    model's deterministic pace prediction plus genuinely modelled overtake
-    uncertainty (still drawn from `rng` regardless), not a noisy
-    realisation of it; see `lap_time.compose_lap_time_s`'s docstring.
+    """`include_noise` defaults to True here — the opposite default from
+    `validation.replay.replay_ensemble`, deliberately. Those are different
+    questions: validation asks "is the deterministic pace prediction
+    accurate" (spec 8.3), which noise can only inflate; a counterfactual
+    answer is a product output that must be reported as a distribution
+    across an ensemble (spec 6.10), and an ensemble run with noise off is
+    not a distribution — it is one deterministic trajectory sampled
+    repeatedly, differing only by whichever overtake rolls happen not to
+    matter. An earlier version of this function defaulted to noise off with
+    the (wrong, for this use) validation-style reasoning; see DECISIONS.md.
+
+    The noise itself is autocorrelated (`lap_time.ar1_noise_s`), not iid —
+    iid noise accumulated over many post-fork laps is an unrealistic random
+    walk of a similar size to the effects a counterfactual is meant to
+    measure (see DECISIONS.md's drift-horizon entries).
 
     Thin wrapper around `fork_and_simulate`: turns the `Decision` into
     strategy overrides, then forks. Exists as a separate function so tests
@@ -46,7 +56,11 @@ def simulate_counterfactual(
     no-op counterfactual and an override-free fork are *the same
     computation*, same seed, same code path, and must match byte-for-byte;
     a tolerance there would only catch a fork-mechanics bug large enough to
-    exceed it, not any fork-mechanics bug).
+    exceed it, not any fork-mechanics bug). Both calls must use the same
+    `include_noise` for that comparison to mean anything — the no-op tests
+    in `tests/test_counterfactual.py` use `include_noise=False` on both
+    sides specifically so the comparison isolates fork mechanics from
+    noise, not because that's the right default for a real answer.
     """
     overrides = apply_decision(snapshot, decision)
     return fork_and_simulate(
@@ -60,13 +74,14 @@ def fork_and_simulate(
     overrides: dict[tuple[str, int], LapRecord],
     first_affected_lap: int,
     seed: int,
-    include_noise: bool = False,
+    include_noise: bool = True,
     decisions_applied: tuple[Decision, ...] = (),
 ) -> SimulationResult:
     """The actual fork-and-resimulate mechanics, independent of any
     `Decision` — see `simulate_counterfactual`'s docstring for why this is
-    exposed separately."""
+    exposed separately, and for the `include_noise` default."""
     rng = make_rng(seed)
+    prev_noise_s: dict[str, float] = {}
 
     real_by_driver_lap = {(lap.driver, lap.lap_number): lap for lap in snapshot.laps}
     drivers_with_laps = sorted({lap.driver for lap in snapshot.laps})
@@ -171,6 +186,12 @@ def fork_and_simulate(
                     f"(rarely used); substituted {modeling_compound.value} model for this lap only"
                 )
 
+            # Noise is always composed here as autocorrelated (see
+            # `simulate_counterfactual`'s docstring), never
+            # `compose_lap_time_s`'s own iid term — pass `include_noise=
+            # False` to it unconditionally and add the AR(1) term
+            # separately so it accumulates correlated across laps instead
+            # of as an iid random walk.
             lap_time = compose_lap_time_s(
                 driver_params=driver_params,
                 compound=modeling_compound,
@@ -187,8 +208,12 @@ def fork_and_simulate(
                 is_in_lap=record.is_in_lap,
                 is_out_lap=record.is_out_lap,
                 rng=rng,
-                include_noise=include_noise,
+                include_noise=False,
             )
+            if include_noise:
+                new_noise = ar1_noise_s(rng, driver_params.pace_std_s, prev_noise_s.get(driver, 0.0))
+                prev_noise_s[driver] = new_noise
+                lap_time += new_noise
             if (record.is_in_lap or record.is_out_lap) and include_noise:
                 lap_time += pit_stop_noise_s(rng)
             if record.is_in_lap or record.is_out_lap:

@@ -317,9 +317,35 @@ Phase 3 (validation) is a hard gate — no counterfactuals until replay reproduc
   ways") was correctly rejected as content-free. Real Hungary 2019
   argument: Red Bull left Verstappen out for a 42-lap stint and didn't
   cover Hamilton's late undercut for the win. Counterfactual: VER's stop
-  moved from lap 67 to lap 50. Across a 10-seed ensemble, VER finishes P2
-  every time (no classification flip) — but real HAM wins by ~18-24s after
-  the undercut, while the counterfactual has VER within 0.3s of the lead
-  at the flag. A materially different, informative answer without a
-  position change. Gap-trace chart generated and shown. Full derivation:
+  moved from lap 67 to lap 50.
+
+  **The first ensemble run of this demo was degenerate, not a
+  distribution** — `simulate_counterfactual` defaulted to `include_noise=
+  False` (correct for validation, wrong here: a counterfactual needs
+  genuine outcome variation to report a distribution per spec 6.10), so
+  ten seeds differing only by overtake rolls all landed on the same "VER
+  P2, 0.3s back" point. Fixed: default flipped to `include_noise=True`,
+  and the noise itself is now `lap_time.ar1_noise_s` — an AR(1) process
+  (`AR1_PHI=0.5`, declared prior) rather than iid, because iid noise over
+  a ~20-lap post-fork window is a random walk of similar size to the
+  effect being measured and would manufacture outcome variation rather
+  than honestly reveal it. Wired into `counterfactual/engine.py` only;
+  `simulation/engine.py`'s replay (noise off for Phase 3 validation
+  regardless) is unaffected. **Re-run with a real 100-seed ensemble: VER
+  wins in 27/100 seeds (27%)** — the actual multiverse-framing answer,
+  not the single point estimate the degenerate run produced. Presented
+  with the closing trajectory (pace/tyre models, held-out validated) and
+  the pass-completion question (`overtake_difficulty` + never-fitted
+  driver skill) explicitly separated by confidence level, not stated with
+  equal certainty.
+
+  **Pit-loss check extended**: excess over commonly-cited figures is
+  same-direction across every race (never fitted below) but not uniform
+  in size — Hungarian +0.96s up to Monaco +8.13s, roughly an 8x range —
+  so there's a small possible systematic high bias worth noting everywhere,
+  and Monaco is disproportionate on top of it, not just its tail.
+
+  154 tests pass. Not done: `AddPitStop` (correctly reprioritised ahead of
+  `RemovePitStop` — interpolation vs. extrapolation, same reasoning as the
+  earlier-stop demo choice), `counterfactual/diff.py`. Full derivation:
   DECISIONS.md's Phase 4 section.
