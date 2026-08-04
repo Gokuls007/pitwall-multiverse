@@ -1,0 +1,21 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - FASTF1_CACHE_DIR=/app/data/cache
+    volumes:
+      # Fitted params are baked into the image; mount cache read-only if present.
+      - ./data/fitted:/app/data/fitted:ro
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend

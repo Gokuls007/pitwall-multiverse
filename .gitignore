@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+build/
+dist/
+
+# FastF1 cache — large, regenerable, never commit
+data/cache/
+
+# Node / frontend
+node_modules/
+frontend/dist/
+.vite/
+
+# Env / secrets
+.env
+*.local
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Generated plots (kept out of git except committed report assets)
+backend/pitwall/validation/_plots/
