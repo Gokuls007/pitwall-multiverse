@@ -238,6 +238,64 @@ def test_tyre_degradation_rates_are_positive(entry):
             )
 
 
+# A post-clip positivity check alone is true by construction — the fallback
+# chain (pooled estimate, or flat 0.0) only ever produces non-negative
+# values, so it can't fail regardless of whether the underlying fit is any
+# good. These two tests check what actually matters: how much of the
+# catalogue's degradation model came from real per-driver regressions
+# (`raw_own_slope`, captured before any clip/fallback) versus a fallback tier,
+# and whether *that* raw signal is itself physically sensible often enough to
+# trust. A race where most cells fail the raw check, or where too large a
+# fraction of cells need a fallback at all, isn't well-fit no matter how
+# plausible the final numbers look — see DECISIONS.md's Australia writeup.
+MAX_FALLBACK_FRACTION = 0.6
+# Deliberately a weak bar (barely above a coin flip), chosen after inspecting
+# 2019 Singapore's raw slopes directly: they cluster tightly around zero
+# (mostly +/-0.15 s/lap), consistent with Singapore's real-world reputation as
+# a comparatively low-degradation circuit (cooler night-race track temps),
+# not a sign bias in the fitter. A near-zero true value makes the *sign* of a
+# small, noisy per-driver estimate close to a coin flip even when the
+# magnitude is being estimated correctly — this bar exists to catch a
+# systematic bias (well below 50%), not to demand confident positivity on a
+# circuit whose true degradation is genuinely small.
+MIN_RAW_OWN_FIT_POSITIVE_RATE = 0.5
+
+
+@pytest.mark.parametrize("entry", CATALOGUE, ids=lambda e: e.race_key)
+def test_fallback_fraction_is_bounded(entry):
+    params = _fit(entry.race_key)
+    summary = params.fit_diagnostics["tyre_cell_provenance"]
+    assert summary["fallback_fraction"] <= MAX_FALLBACK_FRACTION, (
+        f"{entry.race_key}: {summary['n_fallback']}/{summary['n_total_cells']} driver/compound "
+        f"cells needed a fallback (pooled or flat-zero) — this race's tyre model is mostly "
+        f"fallback values, not fitted ones."
+    )
+
+
+@pytest.mark.parametrize("entry", CATALOGUE, ids=lambda e: e.race_key)
+def test_raw_own_fit_slopes_are_usually_positive(entry):
+    """Checks the *pre-clip* signal: of the cells where a driver's own
+    regression actually ran (`raw_own_slope is not None`), most should have
+    come out positive on their own, before any correction. If most of them
+    were negative and only look fine after the fallback chain rewrote them,
+    the model isn't fitting real degradation — it's reporting fallback
+    values with a positivity guard laundering the sign."""
+    params = _fit(entry.race_key)
+    by_driver = params.fit_diagnostics["tyre_cell_provenance"]["by_driver"]
+    raw_slopes = [
+        cell["raw_own_slope"]
+        for driver_cells in by_driver.values()
+        for cell in driver_cells.values()
+        if cell["raw_own_slope"] is not None
+    ]
+    assert raw_slopes, f"{entry.race_key}: no driver ever had enough data for its own slope fit"
+    positive_rate = sum(1 for s in raw_slopes if s >= 0) / len(raw_slopes)
+    assert positive_rate >= MIN_RAW_OWN_FIT_POSITIVE_RATE, (
+        f"{entry.race_key}: only {positive_rate:.0%} of {len(raw_slopes)} raw own-fit slopes "
+        f"were non-negative before any fallback correction was applied."
+    )
+
+
 @pytest.mark.parametrize("entry", CATALOGUE, ids=lambda e: e.race_key)
 def test_fit_quality_is_never_hidden(entry):
     """Spec 8.4: fit quality must be surfaced, never hidden. Every TyreModel

@@ -351,3 +351,147 @@ Newest entries at the bottom of each phase section.
   time is pit loss, not the SC/VSC effect), median-aggregated; falls back to
   the declared prior with the fallback explicitly flagged in diagnostics when
   no such laps exist.
+
+---
+
+## Phase 2 correction pass — external review caught four real problems
+
+A review of the first Phase 2 pass (above) found that several of the
+"fixes" had made the acceptance criteria untestable rather than actually
+satisfied, and that one disclosed limitation was mis-diagnosed. Addressed in
+this order (each is a distinct problem, not one fix cascading into the next):
+
+- **2026-08-04 — The slope sanity-bound clipping made "positive degradation
+  rates" true by construction, not by fitting, and the tests were checking
+  the guard instead of the model.** `tyre.fit_driver_final`'s implausible-slope
+  handling (negative or >0.5 s/lap → pooled fallback → flat 0.0) is correct
+  as a *safety net*, but the Phase 2 integration tests asserted positivity
+  only on the *post-clip* value, which can never fail once that fallback
+  chain exists — 2018 Australian GP's tyre models had landed at exactly
+  0.000 s/lap for both shown compounds (the flat-zero fallback tier), which
+  means *zero degradation was ever actually fitted for that race*, and the
+  test still passed. A tyre model with zero degradation has no undercut and
+  no reason to ever pit, which makes every counterfactual on that race
+  meaningless — this is not "the weakest fit in the catalogue," it's an
+  unfitted one. Fixed in two parts:
+  1. `tyre.fit_driver_final` now returns a `CellProvenance` per driver/compound
+     recording which tier the final value came from (`own_fit`,
+     `pooled_implausible`, `pooled_insufficient_samples`, `flat_zero`) *and*
+     the driver's raw own-fit slope even when it was later overridden.
+     `fit_all.py` aggregates this into `fit_diagnostics["tyre_cell_provenance"]`.
+  2. `tests/test_parameters.py` replaced the post-clip-only positivity check
+     with two tests that use this provenance data:
+     `test_fallback_fraction_is_bounded` (no more than 60% of driver/compound
+     cells may need any fallback tier) and
+     `test_raw_own_fit_slopes_are_usually_positive` (of cells where a driver's
+     own regression actually ran, the *raw, pre-clip* slope must be
+     non-negative at least half the time — see the Singapore entry below for
+     why the bar is 50%, not higher). Both would have caught Australia's zero
+     model immediately (100% of its shown cells were `flat_zero`).
+
+- **2026-08-04 — Dirty air was unfit on every catalogued race, and the report
+  had disclosed the finding it had a good explanation for while going quiet
+  on the one it didn't.** Negative R² on multiple races (worse than
+  predicting the mean) and `max_penalty_s` pinned at a curve-fit bound on
+  others were both symptoms of the same conflation the first pass didn't
+  name: spec 6.6 (dirty air — aero wake from a car close ahead, whether or
+  not it's racing you) and spec 6.9 (traffic — losing time stuck behind a car
+  "not racing for position," e.g. a lapped backmarker) are explicitly
+  separate mechanisms in the spec's own lap-time composition (6.1), but
+  `dirty_air.fit_dirty_air` was regressing lap-time excess against
+  `gap_to_ahead_s` using *every* usable close-following lap, regardless of
+  whether the car ahead was a genuine on-pace rival or a backmarker about to
+  be lapped. On a street circuit (Monaco, Singapore) where the whole field is
+  bunched together for most of the race, most "close gap" observations are
+  the backmarker case — one regressor, two effects, and the fitted
+  "penalty" ends up representing whichever effect dominates the sample, not
+  a clean dirty-air estimate. Fixed with a heuristic that doesn't require a
+  full traffic model: a lap only counts as a dirty-air observation if the
+  car ahead ran *similar* pace that lap
+  (`TRAFFIC_DISPARITY_THRESHOLD_S = 1.5`s) — a backmarker about to be lapped
+  is, almost definitionally, running much slower than the car catching it.
+  Also added the same rigor already applied to tyre slopes: a converged fit
+  with R² below `MIN_ACCEPTABLE_R_SQUARED = 0.05`, or with either curve_fit
+  parameter pinned within 1% of its bound (checked at *both* bounds — the
+  first version of this check only tested the lower bound and missed 2021
+  Spain's `max_penalty_s` pinned at its upper bound of 5.0), is now treated
+  as degenerate and replaced with the declared spec 6.6 prior rather than
+  reported as a real fit. **Result, disclosed rather than hidden: dirty air
+  fell back to the prior on all five catalogue races** — it is not
+  identifiable from any single race in this catalogue with lap-level
+  (non-telemetry) timing data using this method. This is consistent with
+  spec 6.6's own acknowledgement that per-driver dirty-air sensitivity isn't
+  identifiable from one race, extended here to the race-level penalty curve
+  itself. A full fix would need either pooling across multiple races (Part
+  15 territory) or telemetry-derived following-distance data, both out of
+  scope for Phase 2.
+
+- **2026-08-04 — Compound ordering fix corrected: the binding constraint is
+  collinearity across the whole field, not an under-fit time trend, so no
+  time-trend term (linear, log, or otherwise) can fix it — replaced the
+  "fit freely and log the violation" approach with a declared monotonic
+  prior.** The first pass's diagnosis (linear `fuel_effect` failing to
+  capture front-loaded track evolution) was directionally right but pointed
+  at a fix that cannot work: nearly every driver in the field runs softs (or
+  the softest available compound) early and hards (or the hardest) late, so
+  compound identity and race phase are collinear *across the entire field*,
+  not just within one driver's stints. No monotonic-in-lap-number term, no
+  matter how it's shaped, can separate "this compound is inherently faster"
+  from "this compound was used earlier in the race" when the two are the same
+  partition of the data. This is confirmed by the pooled cross-driver
+  fuel-effect fit (previous entry, `fuel.fit_pooled_fuel_effect`): it gave
+  every driver's trend term far more identifying variation and barely moved
+  the fuel-effect number at all, which is exactly what you'd expect from a
+  collinearity rather than an underestimated trend. Per Part 14 rule 1: some
+  things aren't identifiable from one race's data and the honest move is a
+  declared, bounded prior — the same class of problem as the fuel/tyre
+  confound, and as driver skill in spec 6.7. Adjacent-compound single-lap
+  pace deltas are one of the few quantities reasonably well known independent
+  of any single race (consecutive dry compounds are a few tenths of a second
+  apart in general Pirelli/historical experience). Implemented as **weighted
+  isotonic regression** (`fit_all._enforce_monotonic_compound_offsets`,
+  `sklearn.isotonic.IsotonicRegression`, weights = each compound's own
+  `n_observations`) over each driver's fitted offsets, ranked by
+  `enums.SLICK_ORDER` — the least-squares-optimal monotonic sequence given
+  that driver's own (possibly backwards) fitted offsets, so it moves the
+  numbers as little as possible while guaranteeing the correct order, rather
+  than substituting an external value. `MAX_ADJACENT_COMPOUND_GAP_S = 1.2`s is
+  a generous backstop cap on top (rarely triggered). `_check_compound_ordering`
+  is now a post-correction verification (should always report zero
+  violations; if it doesn't, that's a bug in the projection, not the
+  underlying fit) rather than the loud-but-uncorrected warning it was before.
+  Result: 12-15 of ~20 drivers needed correction per race (recorded in
+  `fit_diagnostics["compound_ordering_prior"]`), and post-correction ordering
+  is now correct on every catalogue race.
+
+- **2026-08-04 — Don't chase the pit-loss numbers directly; they're a symptom
+  of pace-model bias, not an independent bug.** Pit loss is defined (spec
+  6.5) relative to *modelled expected pace* — any bias in the tyre/offset
+  model mechanically inflates or deflates it, since the "excess" the pit-loss
+  fitter measures is excess over whatever the (possibly biased) model
+  expects. No separate pit-loss fix was made; the numbers moved on their own
+  once the compound-offset bias above was corrected (e.g. Australia's
+  pit_lane_loss_s dropped from a suspiciously high 34.6s pre-correction —
+  though Australia was dropped from the catalogue anyway, see next entry).
+
+- **2026-08-04 — 2018 Australian GP dropped from the catalogue; replaced with
+  2019 Mexican GP.** Essentially nothing about Australia's fitted parameters
+  actually came from Australia: its fuel effect fell back to the documented
+  prior, its tyre degradation slopes landed on the flat-zero fallback tier
+  for the cells shown in the original report, its dirty air was unfit (as it
+  now is for every race, but Australia had no other signal to fall back on
+  either), and its pit loss inherited the resulting pace-model bias. Root
+  cause, found by screening candidates before picking a replacement (a check
+  skipped the first time): Australia 2018 has two drivers with fewer than 6
+  usable laps (ERI, SIR — struggling backmarker teams that race) requiring
+  teammate fallback, plus heavy SC/VSC/inaccurate-lap exclusion (67+15+62
+  laps out of 940), leaving too little clean data for most cells to fit
+  independently. Per spec 8.3, which explicitly permits excluding a race with
+  documentation rather than degrading the standard: replaced with 2019
+  Mexican GP, screened *before* committing this time — minimum 39 usable laps
+  per driver (zero teammate-fallback cases needed), only a 3-lap VSC, dry.
+  Genuinely strategy-decided: Leclerc took pole but slid to P4 while Vettel
+  (front row alongside him) finished P2, the two Ferraris having run
+  different strategies (Vettel one-stopped, Leclerc pitted twice) — a live
+  question of whether Leclerc's second stop cost more track position than
+  the tyre offset was worth.

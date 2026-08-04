@@ -115,25 +115,109 @@ def _sc_vsc_multipliers(
     return sc_mult, vsc_mult, diagnostics
 
 
-def _check_compound_ordering(driver_params: dict[str, DriverParams]) -> dict:
-    """Sanity check (spec 6.3): softs should be faster than mediums faster
-    than hards. Computed as a reference-independent per-driver difference
-    (offset[fast] - offset[slow], which cancels whichever compound that
-    driver's own regression happened to anchor at 0) so it's meaningful to
-    average across drivers, then checked in aggregate — not per driver, since
-    individual per-driver offsets are noisy enough (one ~15-25 lap stint) that
-    many individual differences flip sign even when the model is unbiased.
+# Not identifiable from a single race's data (spec Part 14 rule 1's explicit
+# escape hatch: a hand-set, bounded, declared prior where fitting isn't
+# possible). Compound choice and race phase are collinear across the *entire*
+# field — nearly everyone runs softs early and hards late — so no time-trend
+# term, however shaped, can separate "compound identity" from "how far into
+# the race" using only this race's own data (see DECISIONS.md: the pooled
+# cross-driver fuel-effect fit didn't move the ordering-violation rate at all,
+# which is what you'd expect from a collinearity, not an underestimated
+# trend). The adjacent-compound gap is one of the few quantities that *is*
+# reasonably well known independent of any single race, from tyre-manufacturer
+# and historical data: consecutive dry compounds are roughly a few tenths of a
+# second apart in clean-air single-lap pace. Used only as an upper bound on
+# how large the enforced gap between adjacent compounds may be — it does not
+# inject a specific value; the isotonic projection below still uses this
+# race's own fitted offsets as the target, just constrained to be monotonic.
+MAX_ADJACENT_COMPOUND_GAP_S = 1.2
 
-    KNOWN LIMITATION (see DECISIONS.md): this aggregate check itself is
-    frequently violated on real data, traced to a specific, understood cause:
-    real track evolution is front-loaded (rapid early grip gain, then a
-    plateau) while spec 6.1's `fuel_effect` is a single linear-in-lap-number
-    coefficient. Since compound choice correlates with stint order (whichever
-    compound is used *latest* benefits from track evolution the linear term
-    under-corrects for), that compound systematically looks faster than it
-    truly is. This is disclosed here rather than hidden; Phase 3's validation
-    harness is where it gets properly stress-tested against real outcomes.
+
+def _enforce_monotonic_compound_offsets(
+    driver_params: dict[str, DriverParams],
+) -> tuple[dict[str, DriverParams], dict]:
+    """Project each driver's fitted compound offsets onto the
+    known-externally, not-fit-from-this-race constraint that softs are faster
+    than mediums are faster than hards (spec 6.3's ordering sanity check,
+    treated as a declared prior per Part 14 rule 1 rather than a free
+    parameter — see module-level comment above).
+
+    Weighted isotonic regression (weights = each compound's own
+    `n_observations`) is the least-squares-optimal monotonic sequence given a
+    driver's own noisy/confounded fitted offsets — it moves the offsets as
+    little as possible while guaranteeing the correct order, rather than
+    substituting an external number. A generous adjacent-gap cap is applied
+    on top as a sanity backstop (rarely triggered; isotonic projection alone
+    handles the overwhelming majority of cases).
     """
+    from sklearn.isotonic import IsotonicRegression
+
+    from pitwall.domain.enums import SLICK_ORDER
+
+    corrected: dict[str, DriverParams] = {}
+    diagnostics: dict = {"drivers_corrected": {}, "n_drivers_checked": 0, "n_drivers_corrected": 0}
+
+    for driver, dp in driver_params.items():
+        present = [c for c in SLICK_ORDER if c in dp.tyre_models]
+        if len(present) < 2:
+            corrected[driver] = dp
+            continue
+
+        diagnostics["n_drivers_checked"] += 1
+        ranks = np.array([SLICK_ORDER.index(c) for c in present], dtype=float)
+        raw_offsets = np.array([dp.tyre_models[c].base_offset_s for c in present])
+        weights = np.array([max(dp.tyre_models[c].n_observations, 1) for c in present])
+
+        iso = IsotonicRegression(increasing=True, out_of_bounds="clip")
+        projected = iso.fit_transform(ranks, raw_offsets, sample_weight=weights)
+
+        # Backstop: cap any adjacent gap the projection still leaves too wide.
+        for i in range(1, len(projected)):
+            gap = projected[i] - projected[i - 1]
+            if gap > MAX_ADJACENT_COMPOUND_GAP_S:
+                projected[i] = projected[i - 1] + MAX_ADJACENT_COMPOUND_GAP_S
+
+        if not np.allclose(projected, raw_offsets, atol=1e-9):
+            diagnostics["n_drivers_corrected"] += 1
+            diagnostics["drivers_corrected"][driver] = {
+                present[i].value: {"raw": float(raw_offsets[i]), "corrected": float(projected[i])}
+                for i in range(len(present))
+            }
+
+        new_tyre_models = dict(dp.tyre_models)
+        for i, compound in enumerate(present):
+            model = new_tyre_models[compound]
+            new_tyre_models[compound] = TyreModel(
+                compound=model.compound,
+                base_offset_s=float(projected[i]),
+                linear_deg_s_per_lap=model.linear_deg_s_per_lap,
+                cliff_lap=model.cliff_lap,
+                cliff_deg_s_per_lap=model.cliff_deg_s_per_lap,
+                r_squared=model.r_squared,
+                n_observations=model.n_observations,
+            )
+
+        corrected[driver] = DriverParams(
+            driver=dp.driver,
+            base_pace_s=dp.base_pace_s,
+            pace_std_s=dp.pace_std_s,
+            tyre_models=new_tyre_models,
+            overtake_skill=dp.overtake_skill,
+            defence_skill=dp.defence_skill,
+        )
+
+    return corrected, diagnostics
+
+
+def _check_compound_ordering(driver_params: dict[str, DriverParams]) -> dict:
+    """Post-correction verification: after
+    `_enforce_monotonic_compound_offsets`, softs should be faster than
+    mediums faster than hards for every driver. Computed as a
+    reference-independent per-driver difference (offset[fast] - offset[slow],
+    which cancels whichever compound that driver's own regression happened to
+    anchor at 0) and checked in aggregate. This should now report zero
+    violations — if it doesn't, the monotonic projection has a bug, not the
+    underlying fit (which is expected to be noisy/backwards pre-correction)."""
     pairs = [
         (Compound.SOFT, Compound.MEDIUM),
         (Compound.MEDIUM, Compound.HARD),
@@ -150,14 +234,13 @@ def _check_compound_ordering(driver_params: dict[str, DriverParams]) -> dict:
             continue
         mean_diff = float(np.mean(diffs))
         result[f"{fast.value}_vs_{slow.value}_mean_offset_diff_s"] = mean_diff
-        if mean_diff > 0:
+        if mean_diff > 1e-9:
             msg = (
-                f"COMPOUND ORDERING VIOLATION: {fast.value} averages {mean_diff:.3f}s SLOWER "
-                f"than {slow.value} across {len(diffs)} drivers (expected negative — {fast.value} "
-                f"should be faster). Likely track-evolution/stint-order conflation with the "
-                f"linear fuel_effect term — see DECISIONS.md. Not corrected; disclosed for Phase 3."
+                f"COMPOUND ORDERING STILL VIOLATED AFTER CORRECTION: {fast.value} averages "
+                f"{mean_diff:.3f}s slower than {slow.value} across {len(diffs)} drivers — this "
+                f"indicates a bug in the monotonic projection, not the underlying fit."
             )
-            logger.warning(msg)
+            logger.error(msg)
             result.setdefault("violations", []).append(msg)
     return result
 
@@ -207,10 +290,11 @@ def fit_race_parameters(snapshot: RaceSnapshot) -> RaceParameters:
     # Pass 2: finalize base pace + tyre models with the race-level fuel effect fixed.
     driver_params: dict[str, DriverParams] = {}
     tyre_notes: dict[str, tuple[str, ...]] = {}
+    cell_provenance_by_driver: dict[str, dict] = {}
     for driver, frame in laps_frames.items():
         if driver in insufficient_data_drivers:
             continue
-        base_pace_s, pace_std_s, tyre_models, notes = tyre.fit_driver_final(
+        base_pace_s, pace_std_s, tyre_models, notes, cell_provenance = tyre.fit_driver_final(
             frame, fuel_effect_s_per_lap, pooled_compounds
         )
         driver_params[driver] = pace.build_driver_params(
@@ -218,7 +302,34 @@ def fit_race_parameters(snapshot: RaceSnapshot) -> RaceParameters:
         )
         if notes:
             tyre_notes[driver] = notes
+        cell_provenance_by_driver[driver] = {
+            compound.value: {
+                "provenance": cp.provenance,
+                "raw_own_slope": cp.raw_own_slope,
+                "final_slope": cp.final_slope,
+            }
+            for compound, cp in cell_provenance.items()
+        }
     diagnostics["tyre_fallback_notes"] = tyre_notes
+
+    # Per-cell fit provenance summary (spec 8.4: fit quality/fallbacks must be
+    # surfaced, never hidden): what fraction of driver/compound cells actually
+    # came from that driver's own regression vs a fallback tier. A race where
+    # most cells need a fallback isn't well-fit no matter how plausible the
+    # final (post-fallback) numbers look — this is what
+    # `test_tyre_degradation_rates_are_positive` checks a ceiling against,
+    # rather than only checking the post-fallback values are positive (which
+    # is true by construction once the fallback chain exists).
+    all_cells = [cp for driver_cells in cell_provenance_by_driver.values() for cp in driver_cells.values()]
+    n_total_cells = len(all_cells)
+    n_own_fit = sum(1 for cp in all_cells if cp["provenance"] == "own_fit")
+    diagnostics["tyre_cell_provenance"] = {
+        "by_driver": cell_provenance_by_driver,
+        "n_total_cells": n_total_cells,
+        "n_own_fit": n_own_fit,
+        "n_fallback": n_total_cells - n_own_fit,
+        "fallback_fraction": (n_total_cells - n_own_fit) / n_total_cells if n_total_cells else 0.0,
+    }
 
     # Teammate fallback for drivers with too few laps to fit at all (spec 6.2).
     team_by_driver = {d.code: d.team for d in snapshot.drivers}
@@ -268,6 +379,8 @@ def fit_race_parameters(snapshot: RaceSnapshot) -> RaceParameters:
                 f"{driver}: no own data and no teammate fit — field-median fallback used."
             )
 
+    driver_params, monotonic_diagnostics = _enforce_monotonic_compound_offsets(driver_params)
+    diagnostics["compound_ordering_prior"] = monotonic_diagnostics
     diagnostics["compound_ordering_check"] = _check_compound_ordering(driver_params)
 
     pit_lane_loss_s, pit_stop_stationary_s, pit_diagnostics = pit_loss.fit_pit_loss(

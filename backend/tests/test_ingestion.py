@@ -45,7 +45,7 @@ def _load(year: int, event_identifier: str):
 # instead — a good test case for ingestion, a bad case for the counterfactual
 # product itself.
 EXPECTED = {
-    "2018_australian": (58, ["VET", "HAM", "RAI", "RIC", "ALO"], []),
+    "2019_mexican": (71, ["HAM", "VET", "BOT", "LEC", "ALB"], []),
     "2019_singapore": (61, ["VET", "LEC", "VER", "HAM", "BOT"], []),
     "2019_monaco": (78, ["HAM", "VET", "BOT", "VER", "GAS"], []),
     "2019_hungarian": (70, ["HAM", "VER", "VET", "LEC", "SAI"], []),

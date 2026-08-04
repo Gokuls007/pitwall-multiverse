@@ -298,12 +298,24 @@ def pool_compound_fits(
     return pooled
 
 
+@dataclass(frozen=True)
+class CellProvenance:
+    """Where one driver/compound's final degradation slope actually came
+    from — needed to test the *fitting*, not the guard, on real data (a
+    positivity/magnitude test on the post-clip value alone is true by
+    construction once the clip exists)."""
+
+    provenance: str  # "own_fit" | "pooled_implausible" | "pooled_insufficient_samples" | "flat_zero"
+    raw_own_slope: float | None  # this driver's own regression estimate, even when overridden
+    final_slope: float
+
+
 def fit_driver_final(
     laps: pd.DataFrame,
     fuel_effect_s_per_lap: float,
     pooled: dict[Compound, PooledCompoundFit],
     min_samples_per_compound: int = MIN_SAMPLES_PER_COMPOUND,
-) -> tuple[float, float, dict[Compound, TyreModel], tuple[str, ...]]:
+) -> tuple[float, float, dict[Compound, TyreModel], tuple[str, ...], dict[Compound, CellProvenance]]:
     """Pass 2: refit base pace and per-compound tyre models with the
     race-level fuel effect held fixed (spec 6.3 point 2 — "having first
     removed the fuel effect"), falling back to pooled cross-driver estimates
@@ -321,7 +333,7 @@ def fit_driver_final(
     in the same regression that estimates the offset removes that bias — see
     DECISIONS.md.
 
-    Returns (base_pace_s, pace_std_s, tyre_models, notes).
+    Returns (base_pace_s, pace_std_s, tyre_models, notes, cell_provenance).
     """
     if "IsUsableForFitting" in laps.columns:
         laps = laps[laps["IsUsableForFitting"]]
@@ -358,18 +370,22 @@ def fit_driver_final(
     sst = float(np.sum((y - y.mean()) ** 2))
 
     tyre_models: dict[Compound, TyreModel] = {}
+    cell_provenance: dict[Compound, CellProvenance] = {}
     for c in present:
         offset = 0.0 if c == reference else float(coef_by_col.get(f"dummy_{c}", 0.0))
         compound_mask = (laps["Compound"] == c).to_numpy()
         n_obs = int(counts[c])
+        raw_own_slope: float | None = None
 
         if c in eligible:
             linear_slope = float(coef_by_col[f"age_{c}"])
+            raw_own_slope = linear_slope
             compound_resid = residual[compound_mask]
             ages = laps.loc[compound_mask, "TyreAge"].to_numpy(dtype=float)
             compound_sse = float(np.sum(compound_resid**2))
             r2 = 1.0 - compound_sse / sst if sst > 0 else 0.0
             cliff_lap, cliff_slope, _ = _detect_cliff(ages, compound_resid + linear_slope * ages)
+            provenance = "own_fit"
 
             # Spec 6.3: "degradation rates should be positive... if a fit violates
             # these, treat it as a data or method bug, not a discovery. Log it
@@ -394,6 +410,7 @@ def fit_driver_final(
                     )
                     linear_slope = pooled_fit.slope
                     cliff_lap, cliff_slope = None, None
+                    provenance = "pooled_implausible"
                 else:
                     notes.append(
                         f"{c}: this driver's own fit gave an implausible degradation slope "
@@ -403,11 +420,13 @@ def fit_driver_final(
                     )
                     linear_slope = 0.0
                     cliff_lap, cliff_slope = None, None
+                    provenance = "flat_zero"
         elif Compound(c) in pooled:
             pooled_fit = pooled[Compound(c)]
             linear_slope = pooled_fit.slope
             offset = pooled_fit.offset  # pooled offset is more reliable than this driver's own 1-2 laps
             cliff_lap, cliff_slope, r2 = None, None, pooled_fit.r_squared
+            provenance = "pooled_insufficient_samples"
             notes.append(
                 f"{c}: using cross-driver pooled degradation ({pooled_fit.n_drivers} drivers, "
                 f"{pooled_fit.n_observations} laps) — this driver had only {counts[c]} laps on it."
@@ -415,6 +434,7 @@ def fit_driver_final(
         else:
             linear_slope = 0.0
             cliff_lap, cliff_slope, r2 = None, None, float("nan")
+            provenance = "flat_zero"
             notes.append(
                 f"{c}: no cross-driver pooled data available either ({counts[c]} laps, no other "
                 f"driver had enough); degradation slope defaulted to 0.0 — treat as unreliable."
@@ -429,5 +449,8 @@ def fit_driver_final(
             r_squared=r2,
             n_observations=n_obs,
         )
+        cell_provenance[Compound(c)] = CellProvenance(
+            provenance=provenance, raw_own_slope=raw_own_slope, final_slope=linear_slope
+        )
 
-    return base_pace_s, pace_std_s, tyre_models, tuple(notes)
+    return base_pace_s, pace_std_s, tyre_models, tuple(notes), cell_provenance

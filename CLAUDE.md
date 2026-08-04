@@ -122,17 +122,29 @@ Phase 3 (validation) is a hard gate — no counterfactuals until replay reproduc
   `race_control_messages` as an ingestion test fixture. Run `python
   backend/scripts/prefetch_races.py` to (re)warm the cache and print the
   cleaning report for every race.
-- **Phase 2 (parameter fitting): done, with one disclosed limitation.**
-  `parameters/` (tyre, fuel, pace, pit_loss, dirty_air, overtaking, fit_all)
-  fitted for all five catalogue races; results persisted to `data/fitted/`.
-  Degradation rates are positive and sanity-bounded on every race (zero
-  negative/implausible slopes after fixes — see DECISIONS.md). **Known
-  limitation, not corrected in this phase:** compound offset ordering
-  (soft/medium/hard pace ranking) is frequently wrong, root-caused to spec
-  6.1's linear `fuel_effect` term not capturing front-loaded track evolution —
-  logged loudly as `COMPOUND ORDERING VIOLATION` in
-  `fit_diagnostics["compound_ordering_check"]` on every race, not hidden.
-  Watch for this specifically in Phase 3 validation around compound
-  transitions. Run `python backend/scripts/fit_parameters.py` to refit and
-  print a diagnostics summary per race.
-- Phase 3 (simulator + validation, hard gate): not started.
+- **Phase 2 (parameter fitting): done, after a correction pass.** `parameters/`
+  (tyre, fuel, pace, pit_loss, dirty_air, overtaking, fit_all) fitted for all
+  five catalogue races; results persisted to `data/fitted/`. Catalogue:
+  2019 Hungarian, 2019 Mexican, 2019 Singapore, 2019 Monaco, 2021 Spanish
+  (2018 Australian GP dropped — see DECISIONS.md).
+  - Degradation slopes: positive on every race, verified via per-cell
+    provenance tracking (`fit_diagnostics["tyre_cell_provenance"]`), not just
+    a post-clip guard — tests check the *pre-clip* raw fit and cap how many
+    cells may need any fallback tier.
+  - Compound offset ordering (soft < medium < hard pace) is enforced via a
+    declared, weighted-isotonic monotonic prior
+    (`fit_diagnostics["compound_ordering_prior"]`) rather than fit freely —
+    it isn't identifiable from a single race (compound choice and race phase
+    are collinear across the whole field), the same class of problem as the
+    fuel/tyre confound.
+  - **Dirty air is unfit on every catalogue race** (falls back to the spec
+    6.6 prior, `fit_diagnostics["dirty_air"]["fallback_used"]`), after fixing
+    a real conflation with traffic (spec 6.9) that was inflating it on street
+    circuits. Not solvable within Phase 2's single-race scope; needs
+    multi-race pooling or telemetry.
+  - Run `python backend/scripts/fit_parameters.py` to refit and print a
+    diagnostics summary per race.
+- Phase 3 (simulator + validation, hard gate): not started. Given dirty air
+  is currently prior-only on every race, expect the undercut/overtake
+  dynamics to be weaker than reality until that's revisited — watch this
+  specifically when validating race shape (spec 8.2).

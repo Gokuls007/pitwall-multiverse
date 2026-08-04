@@ -8,7 +8,7 @@
       "tyre_models": {
         "MEDIUM": {
           "compound": "MEDIUM",
-          "base_offset_s": 0.0,
+          "base_offset_s": 0.5458748495688519,
           "linear_deg_s_per_lap": 0.06651709554237614,
           "cliff_lap": null,
           "cliff_deg_s_per_lap": null,
@@ -17,7 +17,7 @@
         },
         "SOFT": {
           "compound": "SOFT",
-          "base_offset_s": 1.1082913612458507,
+          "base_offset_s": 0.5458748495688519,
           "linear_deg_s_per_lap": 0.006158021266769903,
           "cliff_lap": null,
           "cliff_deg_s_per_lap": null,
@@ -35,7 +35,7 @@
       "tyre_models": {
         "HARD": {
           "compound": "HARD",
-          "base_offset_s": 0.0,
+          "base_offset_s": -0.538010790720751,
           "linear_deg_s_per_lap": 0.02985561125865204,
           "cliff_lap": 17,
           "cliff_deg_s_per_lap": 0.04593654009250671,
@@ -62,7 +62,7 @@
       "tyre_models": {
         "SOFT": {
           "compound": "SOFT",
-          "base_offset_s": 0.0,
+          "base_offset_s": -0.5848615991040986,
           "linear_deg_s_per_lap": 0.017729568165650217,
           "cliff_lap": null,
           "cliff_deg_s_per_lap": null,
@@ -71,7 +71,7 @@
         },
         "MEDIUM": {
           "compound": "MEDIUM",
-          "base_offset_s": -1.2051693557296577,
+          "base_offset_s": -0.5848615991040986,
           "linear_deg_s_per_lap": 0.06457201559612391,
           "cliff_lap": null,
           "cliff_deg_s_per_lap": null,
@@ -143,7 +143,7 @@
       "tyre_models": {
         "MEDIUM": {
           "compound": "MEDIUM",
-          "base_offset_s": 0.0,
+          "base_offset_s": -0.7606032096162676,
           "linear_deg_s_per_lap": 0.03576016721920076,
           "cliff_lap": 17,
           "cliff_deg_s_per_lap": 0.04762277548114807,
@@ -197,7 +197,7 @@
       "tyre_models": {
         "HARD": {
           "compound": "HARD",
-          "base_offset_s": 0.0,
+          "base_offset_s": 0.23758765578574567,
           "linear_deg_s_per_lap": 0.06162129207779364,
           "cliff_lap": null,
           "cliff_deg_s_per_lap": null,
@@ -206,7 +206,7 @@
         },
         "MEDIUM": {
           "compound": "MEDIUM",
-          "base_offset_s": 1.133110358362787,
+          "base_offset_s": 0.23758765578574567,
           "linear_deg_s_per_lap": 0.04668767072266853,
           "cliff_lap": null,
           "cliff_deg_s_per_lap": null,
@@ -224,7 +224,7 @@
       "tyre_models": {
         "MEDIUM": {
           "compound": "MEDIUM",
-          "base_offset_s": 0.0,
+          "base_offset_s": 0.6476145488125179,
           "linear_deg_s_per_lap": 0.07482283226666737,
           "cliff_lap": null,
           "cliff_deg_s_per_lap": null,
@@ -233,7 +233,7 @@
         },
         "SOFT": {
           "compound": "SOFT",
-          "base_offset_s": 1.81332073667505,
+          "base_offset_s": 0.6476145488125179,
           "linear_deg_s_per_lap": 0.006158021266769903,
           "cliff_lap": null,
           "cliff_deg_s_per_lap": null,
@@ -260,7 +260,7 @@
         },
         "HARD": {
           "compound": "HARD",
-          "base_offset_s": 24.53120146197855,
+          "base_offset_s": 1.2,
           "linear_deg_s_per_lap": 0.0,
           "cliff_lap": null,
           "cliff_deg_s_per_lap": null,
@@ -278,7 +278,7 @@
       "tyre_models": {
         "MEDIUM": {
           "compound": "MEDIUM",
-          "base_offset_s": 0.0,
+          "base_offset_s": -1.446048450124503,
           "linear_deg_s_per_lap": 0.07834030000790514,
           "cliff_lap": null,
           "cliff_deg_s_per_lap": null,
@@ -332,7 +332,7 @@
       "tyre_models": {
         "HARD": {
           "compound": "HARD",
-          "base_offset_s": 0.0,
+          "base_offset_s": 0.0037095455849479628,
           "linear_deg_s_per_lap": 0.0061751303276664365,
           "cliff_lap": null,
           "cliff_deg_s_per_lap": null,
@@ -341,7 +341,7 @@
         },
         "MEDIUM": {
           "compound": "MEDIUM",
-          "base_offset_s": 0.036565520765915634,
+          "base_offset_s": 0.0037095455849479628,
           "linear_deg_s_per_lap": 0.07834030000790514,
           "cliff_lap": null,
           "cliff_deg_s_per_lap": null,
@@ -359,7 +359,7 @@
       "tyre_models": {
         "SOFT": {
           "compound": "SOFT",
-          "base_offset_s": 0.0,
+          "base_offset_s": -0.003995977660764598,
           "linear_deg_s_per_lap": 0.034335713064670786,
           "cliff_lap": 41,
           "cliff_deg_s_per_lap": 0.7914279611223549,
@@ -368,7 +368,7 @@
         },
         "MEDIUM": {
           "compound": "MEDIUM",
-          "base_offset_s": -0.009057549364399755,
+          "base_offset_s": -0.003995977660764598,
           "linear_deg_s_per_lap": 0.06669878754416056,
           "cliff_lap": null,
           "cliff_deg_s_per_lap": null,
@@ -386,7 +386,7 @@
       "tyre_models": {
         "MEDIUM": {
           "compound": "MEDIUM",
-          "base_offset_s": 0.0,
+          "base_offset_s": -1.9196784916783904,
           "linear_deg_s_per_lap": 0.07834030000790514,
           "cliff_lap": null,
           "cliff_deg_s_per_lap": null,
@@ -440,7 +440,7 @@
       "tyre_models": {
         "MEDIUM": {
           "compound": "MEDIUM",
-          "base_offset_s": 0.0,
+          "base_offset_s": 0.5235616076503826,
           "linear_deg_s_per_lap": 0.07192157361165756,
           "cliff_lap": null,
           "cliff_deg_s_per_lap": null,
@@ -449,7 +449,7 @@
         },
         "SOFT": {
           "compound": "SOFT",
-          "base_offset_s": 1.5706848229511479,
+          "base_offset_s": 0.5235616076503826,
           "linear_deg_s_per_lap": 0.006158021266769903,
           "cliff_lap": null,
           "cliff_deg_s_per_lap": null,
@@ -543,18 +543,18 @@
     }
   },
   "fuel_effect_s_per_lap": 0.048192002227139596,
-  "pit_lane_loss_s": 27.28408135541745,
+  "pit_lane_loss_s": 27.283548558396014,
   "pit_stop_stationary_s": 2.4,
   "dirty_air": {
-    "max_penalty_s": 1.1296621737731452,
-    "decay_scale_s": 0.14466435705276323,
-    "r_squared": -0.15173244986423295,
-    "n_observations": 1238
+    "max_penalty_s": 1.525,
+    "decay_scale_s": 2.6,
+    "r_squared": NaN,
+    "n_observations": 1077
   },
   "overtake_difficulty": 0.9857142857142858,
-  "sc_lap_time_multiplier": 1.2508224016958804,
+  "sc_lap_time_multiplier": 1.2839831543515738,
   "vsc_lap_time_multiplier": 1.35,
-  "fitted_at": "2026-08-04T03:52:30.221937+00:00",
+  "fitted_at": "2026-08-04T04:16:10.896833+00:00",
   "fit_diagnostics": {
     "per_driver_fallbacks": {},
     "warnings": [],
@@ -629,10 +629,384 @@
         "SOFT: this driver's own fit gave an implausible degradation slope (-0.0905 s/lap, r2=0.993, n=9) \u2014 not physical; using the cross-driver pooled slope (0.0062 s/lap, 1 drivers) instead."
       ]
     },
+    "tyre_cell_provenance": {
+      "by_driver": {
+        "ALB": {
+          "MEDIUM": {
+            "provenance": "own_fit",
+            "raw_own_slope": 0.06651709554237614,
+            "final_slope": 0.06651709554237614
+          },
+          "SOFT": {
+            "provenance": "pooled_implausible",
+            "raw_own_slope": -0.03508537900384568,
+            "final_slope": 0.006158021266769903
+          }
+        },
+        "BOT": {
+          "HARD": {
+            "provenance": "own_fit",
+            "raw_own_slope": 0.02985561125865204,
+            "final_slope": 0.02985561125865204
+          },
+          "SOFT": {
+            "provenance": "pooled_implausible",
+            "raw_own_slope": -0.017474664439875554,
+            "final_slope": 0.006158021266769903
+          }
+        },
+        "GAS": {
+          "SOFT": {
+            "provenance": "own_fit",
+            "raw_own_slope": 0.017729568165650217,
+            "final_slope": 0.017729568165650217
+          },
+          "MEDIUM": {
+            "provenance": "own_fit",
+            "raw_own_slope": 0.06457201559612391,
+            "final_slope": 0.06457201559612391
+          }
+        },
+        "GIO": {
+          "SOFT": {
+            "provenance": "own_fit",
+            "raw_own_slope": 0.019744756062948357,
+            "final_slope": 0.019744756062948357
+          },
+          "MEDIUM": {
+            "provenance": "own_fit",
+            "raw_own_slope": 0.07708761540536788,
+            "final_slope": 0.07708761540536788
+          }
+        },
+        "GRO": {
+          "SOFT": {
+            "provenance": "pooled_implausible",
+            "raw_own_slope": -0.02388444415952004,
+            "final_slope": 0.006158021266769903
+          },
+          "MEDIUM": {
+            "provenance": "own_fit",
+            "raw_own_slope": 0.03198504252017938,
+            "final_slope": 0.03198504252017938
+          }
+        },
+        "HAM": {
+          "MEDIUM": {
+            "provenance": "own_fit",
+            "raw_own_slope": 0.03576016721920076,
+            "final_slope": 0.03576016721920076
+          },
+          "SOFT": {
+            "provenance": "own_fit",
+            "raw_own_slope": 0.021442002227058474,
+            "final_slope": 0.021442002227058474
+          }
+        },
+        "HUL": {
+          "HARD": {
+            "provenance": "own_fit",
+            "raw_own_slope": 0.013582347471531232,
+            "final_slope": 0.013582347471531232
+          },
+          "MEDIUM": {
+            "provenance": "own_fit",
+            "raw_own_slope": 0.09601343079848713,
+            "final_slope": 0.09601343079848713
+          }
+        },
+        "KUB": {
+          "HARD": {
+            "provenance": "own_fit",
+            "raw_own_slope": 0.06162129207779364,
+            "final_slope": 0.06162129207779364
+          },
+          "MEDIUM": {
+            "provenance": "own_fit",
+            "raw_own_slope": 0.04668767072266853,
+            "final_slope": 0.04668767072266853
+          }
+        },
+        "KVY": {
+          "MEDIUM": {
+            "provenance": "own_fit",
+            "raw_own_slope": 0.07482283226666737,
+            "final_slope": 0.07482283226666737
+          },
+          "SOFT": {
+            "provenance": "pooled_implausible",
+            "raw_own_slope": -0.04226158945527831,
+            "final_slope": 0.006158021266769903
+          }
+        },
+        "LEC": {
+          "MEDIUM": {
+            "provenance": "own_fit",
+            "raw_own_slope": 0.33765628794142866,
+            "final_slope": 0.33765628794142866
+          },
+          "HARD": {
+            "provenance": "flat_zero",
+            "raw_own_slope": null,
+            "final_slope": 0.0
+          }
+        },
+        "MAG": {
+          "MEDIUM": {
+            "provenance": "pooled_implausible",
+            "raw_own_slope": -0.0014238771891459546,
+            "final_slope": 0.07834030000790514
+          },
+          "SOFT": {
+            "provenance": "own_fit",
+            "raw_own_slope": 0.1334181927033112,
+            "final_slope": 0.1334181927033112
+          }
+        },
+        "NOR": {
+          "MEDIUM": {
+            "provenance": "pooled_implausible",
+            "raw_own_slope": -0.003578879498387026,
+            "final_slope": 0.07834030000790514
+          },
+          "SOFT": {
+            "provenance": "own_fit",
+            "raw_own_slope": 0.031476985541932505,
+            "final_slope": 0.031476985541932505
+          }
+        },
+        "PER": {
+          "HARD": {
+            "provenance": "own_fit",
+            "raw_own_slope": 0.0061751303276664365,
+            "final_slope": 0.0061751303276664365
+          },
+          "MEDIUM": {
+            "provenance": "pooled_implausible",
+            "raw_own_slope": -0.1352365692012808,
+            "final_slope": 0.07834030000790514
+          }
+        },
+        "RAI": {
+          "SOFT": {
+            "provenance": "own_fit",
+            "raw_own_slope": 0.034335713064670786,
+            "final_slope": 0.034335713064670786
+          },
+          "MEDIUM": {
+            "provenance": "own_fit",
+            "raw_own_slope": 0.06669878754416056,
+            "final_slope": 0.06669878754416056
+          }
+        },
+        "RIC": {
+          "MEDIUM": {
+            "provenance": "pooled_implausible",
+            "raw_own_slope": -0.025703602168466504,
+            "final_slope": 0.07834030000790514
+          },
+          "SOFT": {
+            "provenance": "own_fit",
+            "raw_own_slope": 0.12485866889382671,
+            "final_slope": 0.12485866889382671
+          }
+        },
+        "RUS": {
+          "HARD": {
+            "provenance": "own_fit",
+            "raw_own_slope": 0.008691158632159407,
+            "final_slope": 0.008691158632159407
+          },
+          "MEDIUM": {
+            "provenance": "own_fit",
+            "raw_own_slope": 0.0322205736557113,
+            "final_slope": 0.0322205736557113
+          }
+        },
+        "SAI": {
+          "MEDIUM": {
+            "provenance": "own_fit",
+            "raw_own_slope": 0.07192157361165756,
+            "final_slope": 0.07192157361165756
+          },
+          "SOFT": {
+            "provenance": "pooled_implausible",
+            "raw_own_slope": -0.025279202483910294,
+            "final_slope": 0.006158021266769903
+          }
+        },
+        "STR": {
+          "HARD": {
+            "provenance": "own_fit",
+            "raw_own_slope": 0.01250340180297418,
+            "final_slope": 0.01250340180297418
+          },
+          "MEDIUM": {
+            "provenance": "own_fit",
+            "raw_own_slope": 0.017058217543852436,
+            "final_slope": 0.017058217543852436
+          }
+        },
+        "VER": {
+          "HARD": {
+            "provenance": "own_fit",
+            "raw_own_slope": 0.03437003853942638,
+            "final_slope": 0.03437003853942638
+          },
+          "SOFT": {
+            "provenance": "pooled_implausible",
+            "raw_own_slope": -0.054941331106223824,
+            "final_slope": 0.006158021266769903
+          }
+        },
+        "VET": {
+          "HARD": {
+            "provenance": "own_fit",
+            "raw_own_slope": 0.03819885702439446,
+            "final_slope": 0.03819885702439446
+          },
+          "SOFT": {
+            "provenance": "pooled_implausible",
+            "raw_own_slope": -0.09045799777285395,
+            "final_slope": 0.006158021266769903
+          }
+        }
+      },
+      "n_total_cells": 40,
+      "n_own_fit": 28,
+      "n_fallback": 12,
+      "fallback_fraction": 0.3
+    },
+    "compound_ordering_prior": {
+      "drivers_corrected": {
+        "ALB": {
+          "SOFT": {
+            "raw": 1.1082913612458507,
+            "corrected": 0.5458748495688519
+          },
+          "MEDIUM": {
+            "raw": 0.0,
+            "corrected": 0.5458748495688519
+          }
+        },
+        "BOT": {
+          "SOFT": {
+            "raw": -1.738010790720751,
+            "corrected": -1.738010790720751
+          },
+          "HARD": {
+            "raw": 0.0,
+            "corrected": -0.538010790720751
+          }
+        },
+        "GAS": {
+          "SOFT": {
+            "raw": 0.0,
+            "corrected": -0.5848615991040986
+          },
+          "MEDIUM": {
+            "raw": -1.2051693557296577,
+            "corrected": -0.5848615991040986
+          }
+        },
+        "HAM": {
+          "SOFT": {
+            "raw": -1.9606032096162676,
+            "corrected": -1.9606032096162676
+          },
+          "MEDIUM": {
+            "raw": 0.0,
+            "corrected": -0.7606032096162676
+          }
+        },
+        "KUB": {
+          "MEDIUM": {
+            "raw": 1.133110358362787,
+            "corrected": 0.23758765578574567
+          },
+          "HARD": {
+            "raw": 0.0,
+            "corrected": 0.23758765578574567
+          }
+        },
+        "KVY": {
+          "SOFT": {
+            "raw": 1.81332073667505,
+            "corrected": 0.6476145488125179
+          },
+          "MEDIUM": {
+            "raw": 0.0,
+            "corrected": 0.6476145488125179
+          }
+        },
+        "LEC": {
+          "MEDIUM": {
+            "raw": 0.0,
+            "corrected": 0.0
+          },
+          "HARD": {
+            "raw": 24.53120146197855,
+            "corrected": 1.2
+          }
+        },
+        "MAG": {
+          "SOFT": {
+            "raw": -2.646048450124503,
+            "corrected": -2.646048450124503
+          },
+          "MEDIUM": {
+            "raw": 0.0,
+            "corrected": -1.446048450124503
+          }
+        },
+        "PER": {
+          "MEDIUM": {
+            "raw": 0.036565520765915634,
+            "corrected": 0.0037095455849479628
+          },
+          "HARD": {
+            "raw": 0.0,
+            "corrected": 0.0037095455849479628
+          }
+        },
+        "RAI": {
+          "SOFT": {
+            "raw": 0.0,
+            "corrected": -0.003995977660764598
+          },
+          "MEDIUM": {
+            "raw": -0.009057549364399755,
+            "corrected": -0.003995977660764598
+          }
+        },
+        "RIC": {
+          "SOFT": {
+            "raw": -3.1196784916783904,
+            "corrected": -3.1196784916783904
+          },
+          "MEDIUM": {
+            "raw": 0.0,
+            "corrected": -1.9196784916783904
+          }
+        },
+        "SAI": {
+          "SOFT": {
+            "raw": 1.5706848229511479,
+            "corrected": 0.5235616076503826
+          },
+          "MEDIUM": {
+            "raw": 0.0,
+            "corrected": 0.5235616076503826
+          }
+        }
+      },
+      "n_drivers_checked": 20,
+      "n_drivers_corrected": 12
+    },
     "compound_ordering_check": {
-      "SOFT_vs_MEDIUM_mean_offset_diff_s": -0.3291001933184299,
-      "MEDIUM_vs_HARD_mean_offset_diff_s": -4.181788402417999,
-      "SOFT_vs_HARD_mean_offset_diff_s": -1.181019164583855
+      "SOFT_vs_MEDIUM_mean_offset_diff_s": -0.47275416373178847,
+      "MEDIUM_vs_HARD_mean_offset_diff_s": -0.488200805276358,
+      "SOFT_vs_HARD_mean_offset_diff_s": -1.0016822343436047
     },
     "pit_loss": {
       "n_stops_used": 20,
@@ -644,18 +1018,21 @@
         "LEC L17: no matching out-lap found"
       ],
       "fallback_used": false,
-      "median_s": 27.28408135541745,
-      "std_s": 21.379155823115973,
+      "median_s": 27.283548558396014,
+      "std_s": 22.09103047522962,
       "min_s": 16.22170208095241,
-      "max_s": 73.73460066102707,
+      "max_s": 74.49520387064334,
       "stationary_time_is_a_declared_prior_not_fitted": true
     },
     "dirty_air": {
-      "n_observations": 1238,
+      "n_observations": 1077,
       "n_skipped_no_gap": 70,
+      "n_skipped_no_ahead_time": 0,
+      "n_skipped_as_traffic": 161,
       "n_skipped_no_driver_params": 0,
-      "fallback_used": false,
-      "r_squared": -0.15173244986423295
+      "r_squared_before_acceptance_check": -0.08345430811973031,
+      "fallback_used": true,
+      "fallback_reason": "r2=-0.083 (min acceptable 0.05), max_penalty_pinned=False, decay_scale_pinned=False \u2014 fit converged but is not a real signal"
     },
     "overtaking": {
       "passes_counted": 9,

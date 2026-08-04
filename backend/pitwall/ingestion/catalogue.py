@@ -64,21 +64,21 @@ CATALOGUE: tuple[CatalogueEntry, ...] = (
         ),
     ),
     CatalogueEntry(
-        year=2018,
-        event_name="Australian Grand Prix",
-        fastf1_event_identifier="Australia",
-        circuit="Albert Park Circuit",
+        year=2019,
+        event_name="Mexican Grand Prix",
+        fastf1_event_identifier="Mexico",
+        circuit="Autódromo Hermanos Rodríguez",
         contested_decision=(
-            "Alonso's McLaren stopped on track triggered a Virtual Safety Car. Ferrari "
-            "reacted instantly and pitted Vettel, who was running behind Hamilton; the VSC "
-            "made the stop almost free and Vettel emerged ahead, taking a win Hamilton had "
-            "been leading on pace."
+            "Leclerc took pole but slid to P4; Vettel, alongside him on the front row, "
+            "finished P2. The two Ferraris ran different strategies — Vettel one-stopped, "
+            "Leclerc pitted twice — raising the question of whether the second stop cost "
+            "Leclerc more track position than the tyre offset was worth."
         ),
         decision_points=(
+            DecisionPointHint("pit_stop", "LEC", 43, "Leclerc's second stop"),
             DecisionPointHint(
-                "pit_stop", "VET", 26, "Vettel's VSC-window pit stop that won him the race"
+                "pit_stop", "VET", 37, "Vettel's single stop — the alternate one-stop reference"
             ),
-            DecisionPointHint("safety_car", None, 26, "Shift or remove the VSC period"),
         ),
     ),
     CatalogueEntry(
