@@ -87,3 +87,37 @@ def test_fixture_win_fraction_is_consistent_with_its_own_distribution(fixture):
     n_wins = distribution.get("1", 0)
     assert cf["outcome"]["winFraction"] == pytest.approx(n_wins / cf["nSeeds"], abs=1e-3)
     assert sum(distribution.values()) == cf["nSeeds"]
+
+
+def test_fixture_stints_carry_real_tyre_ages_not_stint_length(fixture):
+    """Tyre age and stint length are different quantities: a stint can start
+    on used tyres, so `end_lap - start_lap + 1` understates the age the tyre
+    model was actually asked about. The frontend displayed ages derived that
+    way and they were simply wrong (VER's 2019 Hungary opening stint runs
+    laps 1-25 at ages 4-28, so it read 25 instead of 28).
+
+    Pinned because it's a named property now. Note the age *span* always
+    equals the lap span (age advances one per lap) — that's not the tell. The
+    tell is the absolute age: `endTyreAge` must differ from stint *length*
+    (`endLap - startLap + 1`) for any stint that began on used tyres, which
+    is exactly what the buggy derivation produced.
+    """
+    stints = fixture["stints"]
+    assert stints
+    for stint in stints:
+        assert "startTyreAge" in stint and "endTyreAge" in stint
+        # Internal consistency: age advances exactly one per lap within a stint.
+        assert stint["endTyreAge"] - stint["startTyreAge"] == stint["endLap"] - stint["startLap"]
+
+    started_used = [s for s in stints if s["startTyreAge"] > 1]
+    assert started_used, "expected at least one stint starting on used tyres in this catalogue"
+
+    # The specific bug: deriving age from length. At least one stint must
+    # disagree with that derivation, or the guard proves nothing.
+    disagrees_with_length = [
+        s for s in stints if s["endTyreAge"] != (s["endLap"] - s["startLap"] + 1)
+    ]
+    assert disagrees_with_length, (
+        "no stint's real end-age differs from its lap count, so this guard couldn't "
+        "detect age being re-derived from stint length"
+    )

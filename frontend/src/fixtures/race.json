@@ -184,7 +184,9 @@
       "compound": "MEDIUM",
       "startLap": 1,
       "endLap": 28,
-      "startedFresh": true
+      "startedFresh": true,
+      "startTyreAge": 1,
+      "endTyreAge": 28
     },
     {
       "driver": "ALB",
@@ -192,7 +194,9 @@
       "compound": "HARD",
       "startLap": 29,
       "endLap": 69,
-      "startedFresh": true
+      "startedFresh": true,
+      "startTyreAge": 1,
+      "endTyreAge": 41
     },
     {
       "driver": "BOT",
@@ -200,7 +204,9 @@
       "compound": "MEDIUM",
       "startLap": 1,
       "endLap": 5,
-      "startedFresh": false
+      "startedFresh": false,
+      "startTyreAge": 4,
+      "endTyreAge": 8
     },
     {
       "driver": "BOT",
@@ -208,7 +214,9 @@
       "compound": "HARD",
       "startLap": 6,
       "endLap": 46,
-      "startedFresh": true
+      "startedFresh": true,
+      "startTyreAge": 1,
+      "endTyreAge": 41
     },
     {
       "driver": "BOT",
@@ -216,7 +224,9 @@
       "compound": "MEDIUM",
       "startLap": 47,
       "endLap": 69,
-      "startedFresh": false
+      "startedFresh": false,
+      "startTyreAge": 1,
+      "endTyreAge": 23
     },
     {
       "driver": "GAS",
@@ -224,7 +234,9 @@
       "compound": "MEDIUM",
       "startLap": 1,
       "endLap": 28,
-      "startedFresh": false
+      "startedFresh": false,
+      "startTyreAge": 4,
+      "endTyreAge": 31
     },
     {
       "driver": "GAS",
@@ -232,7 +244,9 @@
       "compound": "HARD",
       "startLap": 29,
       "endLap": 69,
-      "startedFresh": true
+      "startedFresh": true,
+      "startTyreAge": 1,
+      "endTyreAge": 41
     },
     {
       "driver": "GIO",
@@ -240,7 +254,9 @@
       "compound": "MEDIUM",
       "startLap": 1,
       "endLap": 15,
-      "startedFresh": true
+      "startedFresh": true,
+      "startTyreAge": 1,
+      "endTyreAge": 15
     },
     {
       "driver": "GIO",
@@ -248,7 +264,9 @@
       "compound": "HARD",
       "startLap": 16,
       "endLap": 68,
-      "startedFresh": true
+      "startedFresh": true,
+      "startTyreAge": 1,
+      "endTyreAge": 53
     },
     {
       "driver": "GRO",
@@ -256,7 +274,9 @@
       "compound": "SOFT",
       "startLap": 1,
       "endLap": 19,
-      "startedFresh": false
+      "startedFresh": false,
+      "startTyreAge": 4,
+      "endTyreAge": 22
     },
     {
       "driver": "GRO",
@@ -264,7 +284,9 @@
       "compound": "HARD",
       "startLap": 20,
       "endLap": 49,
-      "startedFresh": true
+      "startedFresh": true,
+      "startTyreAge": 1,
+      "endTyreAge": 30
     },
     {
       "driver": "HAM",
@@ -272,7 +294,9 @@
       "compound": "MEDIUM",
       "startLap": 1,
       "endLap": 31,
-      "startedFresh": false
+      "startedFresh": false,
+      "startTyreAge": 4,
+      "endTyreAge": 34
     },
     {
       "driver": "HAM",
@@ -280,7 +304,9 @@
       "compound": "HARD",
       "startLap": 32,
       "endLap": 49,
-      "startedFresh": true
+      "startedFresh": true,
+      "startTyreAge": 1,
+      "endTyreAge": 18
     },
     {
       "driver": "HAM",
@@ -288,7 +314,9 @@
       "compound": "MEDIUM",
       "startLap": 50,
       "endLap": 70,
-      "startedFresh": false
+      "startedFresh": false,
+      "startTyreAge": 1,
+      "endTyreAge": 21
     },
     {
       "driver": "HUL",
@@ -296,7 +324,9 @@
       "compound": "MEDIUM",
       "startLap": 1,
       "endLap": 36,
-      "startedFresh": true
+      "startedFresh": true,
+      "startTyreAge": 1,
+      "endTyreAge": 36
     },
     {
       "driver": "HUL",
@@ -304,7 +334,9 @@
       "compound": "SOFT",
       "startLap": 37,
       "endLap": 69,
-      "startedFresh": true
+      "startedFresh": true,
+      "startTyreAge": 1,
+      "endTyreAge": 33
     },
     {
       "driver": "KUB",
@@ -312,7 +344,9 @@
       "compound": "MEDIUM",
       "startLap": 1,
       "endLap": 18,
-      "startedFresh": true
+      "startedFresh": true,
+      "startTyreAge": 1,
+      "endTyreAge": 18
     },
     {
       "driver": "KUB",
@@ -320,7 +354,9 @@
       "compound": "HARD",
       "startLap": 19,
       "endLap": 67,
-      "startedFresh": true
+      "startedFresh": true,
+      "startTyreAge": 1,
+      "endTyreAge": 49
     },
     {
       "driver": "KVY",
@@ -328,7 +364,9 @@
       "compound": "MEDIUM",
       "startLap": 1,
       "endLap": 21,
-      "startedFresh": true
+      "startedFresh": true,
+      "startTyreAge": 1,
+      "endTyreAge": 21
     },
     {
       "driver": "KVY",
@@ -336,7 +374,9 @@
       "compound": "HARD",
       "startLap": 22,
       "endLap": 68,
-      "startedFresh": true
+      "startedFresh": true,
+      "startTyreAge": 1,
+      "endTyreAge": 47
     },
     {
       "driver": "LEC",
@@ -344,7 +384,9 @@
       "compound": "MEDIUM",
       "startLap": 1,
       "endLap": 27,
-      "startedFresh": false
+      "startedFresh": false,
+      "startTyreAge": 4,
+      "endTyreAge": 30
     },
     {
       "driver": "LEC",
@@ -352,7 +394,9 @@
       "compound": "HARD",
       "startLap": 28,
       "endLap": 70,
-      "startedFresh": false
+      "startedFresh": false,
+      "startTyreAge": 1,
+      "endTyreAge": 43
     },
     {
       "driver": "MAG",
@@ -360,7 +404,9 @@
       "compound": "MEDIUM",
       "startLap": 1,
       "endLap": 38,
-      "startedFresh": true
+      "startedFresh": true,
+      "startTyreAge": 1,
+      "endTyreAge": 38
     },
     {
       "driver": "MAG",
@@ -368,7 +414,9 @@
       "compound": "SOFT",
       "startLap": 39,
       "endLap": 69,
-      "startedFresh": true
+      "startedFresh": true,
+      "startTyreAge": 1,
+      "endTyreAge": 31
     },
     {
       "driver": "NOR",
@@ -376,7 +424,9 @@
       "compound": "SOFT",
       "startLap": 1,
       "endLap": 28,
-      "startedFresh": false
+      "startedFresh": false,
+      "startTyreAge": 4,
+      "endTyreAge": 31
     },
     {
       "driver": "NOR",
@@ -384,7 +434,9 @@
       "compound": "HARD",
       "startLap": 29,
       "endLap": 69,
-      "startedFresh": true
+      "startedFresh": true,
+      "startTyreAge": 1,
+      "endTyreAge": 41
     },
     {
       "driver": "PER",
@@ -392,7 +444,9 @@
       "compound": "MEDIUM",
       "startLap": 1,
       "endLap": 18,
-      "startedFresh": true
+      "startedFresh": true,
+      "startTyreAge": 1,
+      "endTyreAge": 18
     },
     {
       "driver": "PER",
@@ -400,7 +454,9 @@
       "compound": "HARD",
       "startLap": 19,
       "endLap": 69,
-      "startedFresh": true
+      "startedFresh": true,
+      "startTyreAge": 1,
+      "endTyreAge": 51
     },
     {
       "driver": "RAI",
@@ -408,7 +464,9 @@
       "compound": "SOFT",
       "startLap": 1,
       "endLap": 29,
-      "startedFresh": false
+      "startedFresh": false,
+      "startTyreAge": 4,
+      "endTyreAge": 32
     },
     {
       "driver": "RAI",
@@ -416,7 +474,9 @@
       "compound": "MEDIUM",
       "startLap": 30,
       "endLap": 69,
-      "startedFresh": true
+      "startedFresh": true,
+      "startTyreAge": 1,
+      "endTyreAge": 40
     },
     {
       "driver": "RIC",
@@ -424,7 +484,9 @@
       "compound": "HARD",
       "startLap": 1,
       "endLap": 46,
-      "startedFresh": true
+      "startedFresh": true,
+      "startTyreAge": 1,
+      "endTyreAge": 46
     },
     {
       "driver": "RIC",
@@ -432,7 +494,9 @@
       "compound": "SOFT",
       "startLap": 47,
       "endLap": 69,
-      "startedFresh": true
+      "startedFresh": true,
+      "startTyreAge": 1,
+      "endTyreAge": 23
     },
     {
       "driver": "RUS",
@@ -440,7 +504,9 @@
       "compound": "MEDIUM",
       "startLap": 1,
       "endLap": 16,
-      "startedFresh": true
+      "startedFresh": true,
+      "startTyreAge": 1,
+      "endTyreAge": 16
     },
     {
       "driver": "RUS",
@@ -448,7 +514,9 @@
       "compound": "HARD",
       "startLap": 17,
       "endLap": 68,
-      "startedFresh": true
+      "startedFresh": true,
+      "startTyreAge": 1,
+      "endTyreAge": 52
     },
     {
       "driver": "SAI",
@@ -456,7 +524,9 @@
       "compound": "SOFT",
       "startLap": 1,
       "endLap": 29,
-      "startedFresh": false
+      "startedFresh": false,
+      "startTyreAge": 4,
+      "endTyreAge": 32
     },
     {
       "driver": "SAI",
@@ -464,7 +534,9 @@
       "compound": "HARD",
       "startLap": 30,
       "endLap": 69,
-      "startedFresh": true
+      "startedFresh": true,
+      "startTyreAge": 1,
+      "endTyreAge": 40
     },
     {
       "driver": "STR",
@@ -472,7 +544,9 @@
       "compound": "MEDIUM",
       "startLap": 1,
       "endLap": 16,
-      "startedFresh": true
+      "startedFresh": true,
+      "startTyreAge": 1,
+      "endTyreAge": 16
     },
     {
       "driver": "STR",
@@ -480,7 +554,9 @@
       "compound": "HARD",
       "startLap": 17,
       "endLap": 50,
-      "startedFresh": true
+      "startedFresh": true,
+      "startTyreAge": 1,
+      "endTyreAge": 34
     },
     {
       "driver": "STR",
@@ -488,7 +564,9 @@
       "compound": "SOFT",
       "startLap": 51,
       "endLap": 68,
-      "startedFresh": true
+      "startedFresh": true,
+      "startTyreAge": 1,
+      "endTyreAge": 18
     },
     {
       "driver": "VER",
@@ -496,7 +574,9 @@
       "compound": "MEDIUM",
       "startLap": 1,
       "endLap": 25,
-      "startedFresh": false
+      "startedFresh": false,
+      "startTyreAge": 4,
+      "endTyreAge": 28
     },
     {
       "driver": "VER",
@@ -504,7 +584,9 @@
       "compound": "HARD",
       "startLap": 26,
       "endLap": 67,
-      "startedFresh": true
+      "startedFresh": true,
+      "startTyreAge": 1,
+      "endTyreAge": 42
     },
     {
       "driver": "VER",
@@ -512,7 +594,9 @@
       "compound": "SOFT",
       "startLap": 68,
       "endLap": 70,
-      "startedFresh": false
+      "startedFresh": false,
+      "startTyreAge": 4,
+      "endTyreAge": 6
     },
     {
       "driver": "VET",
@@ -520,7 +604,9 @@
       "compound": "MEDIUM",
       "startLap": 1,
       "endLap": 39,
-      "startedFresh": false
+      "startedFresh": false,
+      "startTyreAge": 4,
+      "endTyreAge": 42
     },
     {
       "driver": "VET",
@@ -528,7 +614,9 @@
       "compound": "SOFT",
       "startLap": 40,
       "endLap": 70,
-      "startedFresh": true
+      "startedFresh": true,
+      "startTyreAge": 1,
+      "endTyreAge": 31
     }
   ],
   "pitLaps": [
@@ -14645,6 +14733,77 @@
         ]
       }
     ],
+    "focusStrategy": {
+      "real": [
+        {
+          "compound": "MEDIUM",
+          "startLap": 1,
+          "endLap": 25,
+          "startTyreAge": 4,
+          "endTyreAge": 28,
+          "extrapolatedLaps": 0,
+          "maxExcessLaps": 0,
+          "firstExtrapolatedLap": null
+        },
+        {
+          "compound": "HARD",
+          "startLap": 26,
+          "endLap": 67,
+          "startTyreAge": 1,
+          "endTyreAge": 42,
+          "extrapolatedLaps": 0,
+          "maxExcessLaps": 0,
+          "firstExtrapolatedLap": null
+        },
+        {
+          "compound": "SOFT",
+          "startLap": 68,
+          "endLap": 70,
+          "startTyreAge": 4,
+          "endTyreAge": 6,
+          "extrapolatedLaps": 0,
+          "maxExcessLaps": 0,
+          "firstExtrapolatedLap": null
+        }
+      ],
+      "alternate": [
+        {
+          "compound": "MEDIUM",
+          "startLap": 1,
+          "endLap": 25,
+          "startTyreAge": 4,
+          "endTyreAge": 28,
+          "extrapolatedLaps": 0,
+          "maxExcessLaps": 0,
+          "firstExtrapolatedLap": null
+        },
+        {
+          "compound": "HARD",
+          "startLap": 26,
+          "endLap": 50,
+          "startTyreAge": 1,
+          "endTyreAge": 25,
+          "extrapolatedLaps": 0,
+          "maxExcessLaps": 0,
+          "firstExtrapolatedLap": null
+        },
+        {
+          "compound": "SOFT",
+          "startLap": 51,
+          "endLap": 70,
+          "startTyreAge": 4,
+          "endTyreAge": 23,
+          "extrapolatedLaps": 17,
+          "maxExcessLaps": 17,
+          "firstExtrapolatedLap": 54
+        }
+      ],
+      "observedMaxTyreAge": {
+        "MEDIUM": 28,
+        "HARD": 42,
+        "SOFT": 6
+      }
+    },
     "outcome": {
       "focusDriver": "VER",
       "winFraction": 0.2,

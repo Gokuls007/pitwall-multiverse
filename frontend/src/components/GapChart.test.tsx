@@ -1,6 +1,7 @@
 import { render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import GapChart from "./GapChart";
+import type { LapAxis } from "./LapAxisPanes";
 
 /**
  * These pin properties that programmatic structure checks did NOT catch when
@@ -25,10 +26,28 @@ const alternateSeries = Array.from({ length: 10 }, (_, i) => {
   return { lap, gap, paceLow: gap - 0.5, paceHigh: gap + 0.5, clampedFraction: lap > 7 ? 0.9 : 0 };
 });
 
+/**
+ * A fixed axis, so these tests exercise GapChart's own drawing rather than
+ * LapAxisPanes' measurement (which needs a real layout engine). The shared
+ * axis is intentionally an explicit input, not something the chart derives —
+ * that's what guarantees it can't drift from StrategyTimeline.
+ */
+function staticAxis(firstLap = 1, lastLap = 10, plotWidth = 280): LapAxis {
+  const lapSpan = Math.max(1, lastLap - firstLap);
+  return {
+    plotWidth,
+    firstLap,
+    lastLap,
+    lapSpan,
+    x: (lap: number) => ((lap - firstLap) / lapSpan) * plotWidth,
+    inRange: (lap: number) => lap >= firstLap && lap <= lastLap,
+  };
+}
+
 function renderFocus(extra: Partial<React.ComponentProps<typeof GapChart>> = {}) {
   return render(
     <GapChart
-      totalLaps={10}
+      axis={staticAxis()}
       realSeries={realSeries}
       teamByDriver={teamByDriver}
       teammateIndex={teammateIndex}

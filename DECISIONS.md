@@ -2792,3 +2792,51 @@ and VALIDATION.md's own numbers. Recorded as the next guard to build, not
 as done.
 
 Frontend 10 tests, backend 170.
+
+### 2026-08-04 — StrategyTimeline on the shared axis; a fabricated-data bug found by looking again
+
+Built `LapAxisPanes` + `StrategyTimeline`, completing the layout's central
+analytical claim: one scroll container, one x-scale, both panes rendering
+into it at identical widths (verified: both SVGs exactly 1048px). Alignment
+holds **by construction** rather than by synchronising two scroll offsets,
+which would eventually drift. The axis is an explicit input to both
+components, not something either derives.
+
+**Three review points, all addressed:**
+
+1. *Compound colour collided with the annotation token.* The broadcast
+   convention (soft-red / medium-yellow / hard-white) fails twice here: red
+   already means "counterfactual", and white is invisible on cream. Replaced
+   with a luminance ramp in ink tints (`lib/compounds.ts`), ordered to match
+   the tyre model's own monotonic prior — darker = softer = faster, so it
+   reads as one consistent scale rather than three borrowed hues. Red stays
+   reserved for the alternate timeline.
+2. *Whose strategy is shown?* Focus mode gives the driver **two rows**, real
+   and alternate, since with a counterfactual active he has two stint
+   structures and one bar would contradict the chart directly above it. The
+   difference between the rows *is* the decision, which makes it legible as
+   one.
+3. *`--caution` earned its place.* Generalised the extrapolation helper first:
+   `add_pit_stop_extrapolation_laps` was `AddPitStop`-specific, but
+   `ChangePitLap` extrapolates too — so `strategy.extrapolation_by_lap` is now
+   decision-agnostic. The result is worth stating: **the alternate SOFT stint
+   runs tyre ages 4→23 against the 6 VER actually reached, so 17 of its laps
+   are beyond any evidence.** That's hatched in ochre on the stint bar with a
+   plain-language line beneath, putting the epistemics on the surface where
+   the user makes the choice rather than in this file.
+
+**And looking again found another fabricated-data bug.** Field mode showed
+VER's opening stint as `M 25` — I had derived tyre age from stint length
+(`endLap - startLap + 1`) because the `stints` export didn't carry age. But
+age and length are different quantities: that stint runs laps 1-25 at ages
+**4-28**, because it started on used tyres. The UI was displaying a number
+the model never used. Fixed by exporting real per-lap ages, and pinned with a
+guard that asserts at least one stint's real end-age disagrees with its lap
+count — otherwise the guard couldn't detect the derivation coming back.
+
+Worth noting the first version of that guard was itself wrong: it asserted the
+age *span* differs from the lap span, which is never true (age advances one
+per lap). The tell is the *absolute* age against stint length. Corrected
+before committing.
+
+Frontend 10 tests, backend 175.

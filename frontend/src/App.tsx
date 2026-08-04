@@ -14,6 +14,8 @@
 
 import { useMemo, useState } from "react";
 import GapChart from "./components/GapChart";
+import LapAxisPanes from "./components/LapAxisPanes";
+import StrategyTimeline, { type StintRun } from "./components/StrategyTimeline";
 import fixture from "./fixtures/race.json";
 
 type Driver = { code: string; team: string; gridPosition: number };
@@ -28,6 +30,7 @@ const FOCUS_LEAD_IN_LAPS = 6;
 export default function App() {
   const [mode, setMode] = useState<"field" | "focus">("focus");
   const [wholeRace, setWholeRace] = useState(false);
+  const [hoverLap, setHoverLap] = useState<number | null>(null);
 
   const { teamByDriver, teammateIndex } = useMemo(() => {
     const byTeam: Record<string, string[]> = {};
@@ -52,6 +55,56 @@ export default function App() {
   // the divergence sat off-screen to the right at default scroll, and
   // pre-fork pit-stop swings (~18s, identical in both timelines) dominated
   // the y-scale so the real sub-second effect was imperceptible.
+  // Focus mode gives the driver TWO rows, real and alternate. With a
+  // counterfactual active he has two stint structures (real stop at 67,
+  // alternate at 50) and one bar would contradict the chart directly above
+  // it; two rows also make the decision legible *as* a decision, since the
+  // difference between them is exactly the change.
+  const strategyRows = useMemo(() => {
+    const fs = cf.focusStrategy;
+    if (mode === "focus") {
+      // Short labels: the gutter is shared with the y-axis numerals and is
+      // only as wide as those need, and the driver is already named in the
+      // chart caption directly above.
+      return [
+        { label: "real", stints: fs.real as StintRun[] },
+        { label: "alt", stints: fs.alternate as StintRun[], isAlternate: true },
+      ];
+    }
+    // Field mode: real stints for every driver, ordered by finishing position.
+    const byDriver = new Map<string, StintRun[]>();
+    for (const s of fixture.stints) {
+      const runs = byDriver.get(s.driver) ?? [];
+      runs.push({
+        compound: s.compound,
+        startLap: s.startLap,
+        endLap: s.endLap,
+        // Real ages from the fixture, never derived from stint length — a
+        // stint can begin on used tyres, so length understates the age.
+        startTyreAge: s.startTyreAge,
+        endTyreAge: s.endTyreAge,
+        extrapolatedLaps: 0,
+        maxExcessLaps: 0,
+        firstExtrapolatedLap: null,
+      });
+      byDriver.set(s.driver, runs);
+    }
+    return (fixture.drivers as Driver[])
+      .slice()
+      .sort((a, b) => (a.gridPosition ?? 99) - (b.gridPosition ?? 99))
+      .filter((d) => byDriver.has(d.code))
+      .map((d) => ({ label: d.code, stints: byDriver.get(d.code)! }));
+  }, [mode]);
+
+  /** The alternate stint that runs furthest past this driver's observed data. */
+  const beyondEvidence = useMemo(() => {
+    const runs = cf.focusStrategy.alternate as StintRun[];
+    const worst = runs
+      .filter((r) => r.extrapolatedLaps > 0)
+      .sort((a, b) => b.maxExcessLaps - a.maxExcessLaps)[0];
+    return worst ?? null;
+  }, []);
+
   const lapRange = useMemo<[number, number]>(
     () =>
       mode === "focus" && !wholeRace
@@ -103,19 +156,49 @@ export default function App() {
         )}
       </div>
 
-      <GapChart
-        totalLaps={fixture.meta.totalLaps}
-        realSeries={fixture.realSeries as Record<string, { lap: number; gap: number }[]>}
-        teamByDriver={teamByDriver}
-        teammateIndex={teammateIndex}
-        mode={mode}
-        focusDriver={cf.driver}
-        alternateSeries={cf.series}
-        seedSeries={cf.seedSeries}
-        divergenceLap={cf.divergenceLap}
-        safetyCarPeriods={fixture.safetyCarPeriods}
-        lapRange={lapRange}
-      />
+      {/* One scroll container, one x-scale, both panes inside it: the shared
+          lap axis is the analytical payoff of this layout, so alignment is
+          guaranteed by construction rather than by syncing scroll offsets. */}
+      <LapAxisPanes lapRange={lapRange}>
+        {(axis) => (
+          <>
+            <GapChart
+              axis={axis}
+              realSeries={fixture.realSeries as Record<string, { lap: number; gap: number }[]>}
+              teamByDriver={teamByDriver}
+              teammateIndex={teammateIndex}
+              mode={mode}
+              focusDriver={cf.driver}
+              alternateSeries={cf.series}
+              seedSeries={cf.seedSeries}
+              divergenceLap={cf.divergenceLap}
+              safetyCarPeriods={fixture.safetyCarPeriods}
+              hoverLap={hoverLap}
+              onHoverLap={setHoverLap}
+            />
+            <StrategyTimeline
+              axis={axis}
+              rows={strategyRows}
+              hoverLap={hoverLap}
+              onHoverLap={setHoverLap}
+            />
+          </>
+        )}
+      </LapAxisPanes>
+
+      {/* The caution channel earns its place here: the stint bar is the
+          surface the user makes the choice on, so how far the answer runs
+          past its own evidence belongs beside it, not in DECISIONS.md. */}
+      {mode === "focus" && beyondEvidence != null && beyondEvidence.extrapolatedLaps > 0 && (
+        <p className="mt-2 flex flex-wrap items-baseline gap-x-2 px-1 font-mono text-micro text-caution">
+          <span aria-hidden="true" className="inline-block h-2.5 w-4 align-middle" style={{ background: "repeating-linear-gradient(45deg,#A8761F 0 2px,transparent 2px 4px)" }} />
+          {beyondEvidence.extrapolatedLaps} laps of the alternate {beyondEvidence.compound} stint run beyond
+          any tyre age {cf.driver} actually reached on that compound
+          (max observed{" "}
+          {(cf.focusStrategy.observedMaxTyreAge as Record<string, number>)[beyondEvidence.compound]} laps, this stint
+          reaches {beyondEvidence.endTyreAge}) — extrapolation, not interpolation.
+        </p>
+      )}
 
       {mode === "focus" && (
         <section className="mt-5 grid gap-5 sm:grid-cols-[1fr_auto]">

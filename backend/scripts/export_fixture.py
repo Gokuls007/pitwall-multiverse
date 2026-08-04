@@ -29,6 +29,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 warnings.filterwarnings("ignore")
 
 from pitwall.counterfactual.engine import simulate_counterfactual  # noqa: E402
+from pitwall.counterfactual.strategy import (  # noqa: E402
+    apply_decision,
+    extrapolation_by_lap,
+    observed_max_tyre_age,
+)
 from pitwall.domain.decision import ChangePitLap  # noqa: E402
 from pitwall.ingestion.catalogue import get_entry  # noqa: E402
 from pitwall.ingestion.loader import load_race  # noqa: E402
@@ -73,17 +78,39 @@ def main() -> None:
     ]
 
     # --- Stints, for the strategy timeline (aligned to the same lap axis) ---
-    stints = [
-        {
-            "driver": s.driver,
-            "stintNumber": s.stint_number,
-            "compound": s.compound.value,
-            "startLap": s.start_lap,
-            "endLap": s.end_lap,
-            "startedFresh": s.started_fresh,
-        }
-        for s in snapshot.stints
-    ]
+    # Real tyre ages are carried explicitly rather than derived from stint
+    # length. They are NOT the same thing: a stint can start on used tyres
+    # (VER's 2019 Hungary first stint runs laps 1-25 but at ages 4-28), so
+    # `end_lap - start_lap + 1` understates the age the tyre model was
+    # actually asked about. An earlier version of the frontend computed it
+    # that way and displayed ages that were simply wrong.
+    tyre_age_by_driver_lap = {
+        (lap.driver, lap.lap_number): lap.tyre_life for lap in snapshot.laps
+    }
+
+    def stint_age_bounds(driver: str, start_lap: int, end_lap: int) -> tuple[int, int]:
+        ages = [
+            tyre_age_by_driver_lap[(driver, lap)]
+            for lap in range(start_lap, end_lap + 1)
+            if (driver, lap) in tyre_age_by_driver_lap
+        ]
+        return (min(ages), max(ages)) if ages else (0, 0)
+
+    stints = []
+    for s in snapshot.stints:
+        start_age, end_age = stint_age_bounds(s.driver, s.start_lap, s.end_lap)
+        stints.append(
+            {
+                "driver": s.driver,
+                "stintNumber": s.stint_number,
+                "compound": s.compound.value,
+                "startLap": s.start_lap,
+                "endLap": s.end_lap,
+                "startedFresh": s.started_fresh,
+                "startTyreAge": start_age,
+                "endTyreAge": end_age,
+            }
+        )
     pit_laps = sorted(
         {(lap.driver, lap.lap_number) for lap in snapshot.laps if lap.is_in_lap}
     )
@@ -159,6 +186,62 @@ def main() -> None:
         if trace:
             seed_series.append({"seed": result.rng_seed, "points": trace})
 
+    # Alternate stint structure for the focus driver, plus how far past that
+    # driver's observed tyre life each lap sits. The stint bar is where the
+    # user makes the choice, so it's the right surface for the epistemics —
+    # shading the beyond-evidence portion puts the caveat at the point of
+    # decision instead of leaving it in DECISIONS.md.
+    overrides = apply_decision(snapshot, DECISION)
+    excess_by_lap = extrapolation_by_lap(snapshot, overrides)
+    real_by_lap = {(lap.driver, lap.lap_number): lap for lap in snapshot.laps}
+
+    def stint_runs(records: list[tuple[int, str, int, int]]) -> list[dict]:
+        """Collapse per-lap (lap, compound, tyre_age, excess) into stint runs."""
+        runs: list[dict] = []
+        for lap_number, compound, tyre_age, excess in records:
+            if runs and runs[-1]["compound"] == compound and lap_number == runs[-1]["endLap"] + 1:
+                runs[-1]["endLap"] = lap_number
+                runs[-1]["endTyreAge"] = tyre_age
+                runs[-1]["extrapolatedLaps"] += 1 if excess > 0 else 0
+                runs[-1]["maxExcessLaps"] = max(runs[-1]["maxExcessLaps"], excess)
+                if excess > 0 and runs[-1]["firstExtrapolatedLap"] is None:
+                    runs[-1]["firstExtrapolatedLap"] = lap_number
+            else:
+                runs.append(
+                    {
+                        "compound": compound,
+                        "startLap": lap_number,
+                        "endLap": lap_number,
+                        "startTyreAge": tyre_age,
+                        "endTyreAge": tyre_age,
+                        "extrapolatedLaps": 1 if excess > 0 else 0,
+                        "maxExcessLaps": excess,
+                        "firstExtrapolatedLap": lap_number if excess > 0 else None,
+                    }
+                )
+        return runs
+
+    focus_alternate_records: list[tuple[int, str, int, int]] = []
+    focus_real_records: list[tuple[int, str, int, int]] = []
+    for lap_number in range(1, snapshot.total_laps + 1):
+        real = real_by_lap.get((focus, lap_number))
+        if real is None:
+            continue
+        focus_real_records.append((lap_number, real.compound.value, real.tyre_life, 0))
+        effective = overrides.get((focus, lap_number), real)
+        focus_alternate_records.append(
+            (
+                lap_number,
+                effective.compound.value,
+                effective.tyre_life,
+                excess_by_lap.get((focus, lap_number), 0),
+            )
+        )
+
+    observed_ceiling = {
+        compound.value: age for compound, age in observed_max_tyre_age(snapshot, focus).items()
+    }
+
     winners = [result.classification[0][0] for result in results if result.classification]
     focus_positions = [dict(result.classification).get(focus) for result in results]
     focus_wins = sum(1 for p in focus_positions if p == 1)
@@ -207,6 +290,11 @@ def main() -> None:
             "nSeeds": len(results),
             "series": alternate_series,
             "seedSeries": seed_series,
+            "focusStrategy": {
+                "real": stint_runs(focus_real_records),
+                "alternate": stint_runs(focus_alternate_records),
+                "observedMaxTyreAge": observed_ceiling,
+            },
             "outcome": {
                 "focusDriver": focus,
                 "winFraction": round(focus_wins / len(results), 3),

@@ -41,6 +41,7 @@ from __future__ import annotations
 from dataclasses import replace
 
 from pitwall.domain.decision import AddPitStop, ChangePitLap, Decision
+from pitwall.domain.enums import Compound
 from pitwall.domain.race import LapRecord, RaceSnapshot
 
 
@@ -61,6 +62,41 @@ def apply_decision(snapshot: RaceSnapshot, decision: Decision) -> dict[tuple[str
     )
 
 
+def observed_max_tyre_age(snapshot: RaceSnapshot, driver: str) -> dict[Compound, int]:
+    """The oldest tyre age this driver actually ran on each compound in this
+    race — the boundary past which any counterfactual using that compound is
+    extrapolating rather than interpolating."""
+    observed: dict[Compound, int] = {}
+    for lap in snapshot.laps:
+        if lap.driver != driver:
+            continue
+        observed[lap.compound] = max(observed.get(lap.compound, 0), lap.tyre_life)
+    return observed
+
+
+def extrapolation_by_lap(
+    snapshot: RaceSnapshot, overrides: dict[tuple[str, int], LapRecord]
+) -> dict[tuple[str, int], int]:
+    """For every overridden lap, how many laps *past* that driver's observed
+    tyre life on that compound it sits. 0 means within observed range.
+
+    Decision-agnostic on purpose: `ChangePitLap` extrapolates too, not just
+    `AddPitStop`. Moving VER's 2019 Hungary stop from lap 67 to 50 lengthens
+    the following SOFT stint to ~20 laps against the 6 he actually ran, which
+    is exactly the same class of exposure the `AddPitStop` helper was written
+    for. Anything that surfaces confidence to a user should read this rather
+    than assume a decision type is safe by construction.
+    """
+    result: dict[tuple[str, int], int] = {}
+    observed_by_driver: dict[str, dict[Compound, int]] = {}
+    for (driver, lap_number), record in overrides.items():
+        if driver not in observed_by_driver:
+            observed_by_driver[driver] = observed_max_tyre_age(snapshot, driver)
+        observed = observed_by_driver[driver].get(record.compound, 0)
+        result[(driver, lap_number)] = max(0, record.tyre_life - observed)
+    return result
+
+
 def add_pit_stop_extrapolation_laps(snapshot: RaceSnapshot, decision: AddPitStop) -> int:
     """How many laps of the stint an `AddPitStop` creates would run at a
     tyre age *beyond* anything the driver actually ran on that compound in
@@ -74,17 +110,7 @@ def add_pit_stop_extrapolation_laps(snapshot: RaceSnapshot, decision: AddPitStop
     result with the same confidence as an in-range one.
     """
     overrides = _apply_add_pit_stop(snapshot, decision)
-    observed_max: dict[object, int] = {}
-    for lap in snapshot.laps:
-        if lap.driver != decision.driver:
-            continue
-        observed_max[lap.compound] = max(observed_max.get(lap.compound, 0), lap.tyre_life)
-
-    return sum(
-        1
-        for overridden in overrides.values()
-        if overridden.tyre_life > observed_max.get(overridden.compound, 0)
-    )
+    return sum(1 for excess in extrapolation_by_lap(snapshot, overrides).values() if excess > 0)
 
 
 def _apply_add_pit_stop(snapshot: RaceSnapshot, decision: AddPitStop) -> dict[tuple[str, int], LapRecord]:
