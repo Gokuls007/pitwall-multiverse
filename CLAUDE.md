@@ -288,21 +288,38 @@ Phase 3 (validation) is a hard gate — no counterfactuals until replay reproduc
   `counterfactual/` (`strategy.py`, `engine.py`) built for `ChangePitLap`
   only; the other five `Decision` types are declared with working
   `first_affected_lap` but `apply_decision` raises `NotImplementedError`
-  for them (disclosed scope, see DECISIONS.md). The no-op test was built
-  first, per instruction, and asserts against a horizon-scaled tolerance
-  (`~0.835 * sqrt(laps remaining)`, from the Phase 3 drift measurement)
-  rather than exact equality — a genuine no-op still resimulates pace from
-  the fitted model once it crosses the fork, so some drift is expected and
-  now quantified rather than assumed. Two real bugs found and fixed while
-  building it: `_apply_change_pit_lap` assumed the out-lap/tyre-reset
-  always lands at `original_lap + 1` (false on 2019 Hungary's Hamilton — a
-  genuine 2-lap real transition), and the affected-lap range for a shifted
-  stop was computed by stint index, which could silently overwrite a
-  later, unrelated real stop when stint index and `is_in_lap` don't align.
-  Both fixed by deriving structure from the real data directly rather than
-  assuming a fixed offset. 147 tests pass. `counterfactual/diff.py` (spec
-  9.3's structured diff) and the remaining five decision types are not yet
-  built. Demo: HAM's real lap-48 stop (2019 Hungary) moved to lap 44 —
-  chosen for the easier extrapolation direction (interpolation within
-  observed tyre ages) and a short drift horizon; gap-trace chart generated
-  and shown. Full derivation: DECISIONS.md's Phase 4 section.
+  for them (disclosed scope, see DECISIONS.md).
+
+  **The no-op test is exact, not horizon-tolerant.** A first version
+  asserted a horizon-scaled tolerance (`~5 * 0.835 * sqrt(laps remaining)`)
+  — too loose (it permits ~20-34s of drift, larger than a pit stop). Fixed:
+  a no-op counterfactual and an override-free fork at the same lap are the
+  same computation, same seed, same code path, so they must match byte-
+  for-byte. `counterfactual/engine.py` now exposes `fork_and_simulate`
+  (the mechanics, taking overrides directly) with `simulate_counterfactual`
+  as a thin `Decision`-to-overrides wrapper; tests compare the two
+  directly. This immediately caught a real bug the loose version had
+  missed: on 2019 Hungary's Hamilton (whose real pit transition spans 2
+  laps, not 1), the "new stint" branch double-marked the tyre-reset lap as
+  an out-lap on top of the real transition lap that already carried that
+  flag, adding a spurious extra pit-lane-time penalty. Fixed by only
+  marking the reset lap as the out-lap when the transition is a single
+  lap. 147 tests pass (two rewritten, not added).
+
+  **Pit-loss sanity check**: fitted `pit_lane_loss_s` across the catalogue
+  (21-25s for four races) looks broadly plausible against commonly cited
+  circuit figures; **Monaco's 28.13s stands out** as notably high for a
+  circuit usually cited as one of the *lowest* (~19-21s, short lap despite
+  the tight pit lane) — a second independent signal on top of its already-
+  known worst-in-catalogue fit quality, not chased to a cause.
+
+  **Demo rebuilt** after the first one (HAM lap 48->44, "he wins both
+  ways") was correctly rejected as content-free. Real Hungary 2019
+  argument: Red Bull left Verstappen out for a 42-lap stint and didn't
+  cover Hamilton's late undercut for the win. Counterfactual: VER's stop
+  moved from lap 67 to lap 50. Across a 10-seed ensemble, VER finishes P2
+  every time (no classification flip) — but real HAM wins by ~18-24s after
+  the undercut, while the counterfactual has VER within 0.3s of the lead
+  at the flag. A materially different, informative answer without a
+  position change. Gap-trace chart generated and shown. Full derivation:
+  DECISIONS.md's Phase 4 section.

@@ -2139,3 +2139,79 @@ not chased down to a single hand-verified example as asked. `counterfactual
 lap, largest swing, winner change) is not yet built — `simulate_counterfactual`
 's `SimulationResult` has everything needed to build it against, but the
 comparison/formatting layer itself doesn't exist yet.
+
+### 2026-08-04 — No-op test made exact (not horizon-tolerant); a real bug it caught; a real demo
+
+External review correctly identified the no-op test above as too loose: a
+`5 * 0.835 * sqrt(laps_remaining)` tolerance allows ~20s of drift on the
+late-fork case and ~34s on the early-fork one — larger than a pit stop
+itself, meaning the test would have passed even if the fork machinery lost
+a driver an entire stop's worth of time. The sharper formulation: a no-op
+counterfactual forked at lap N is *the same computation* as an override-
+free fork at lap N (real strategy throughout), same seed, same code path —
+these must match byte-for-byte, not within a tolerance built for the
+*different* question of how much pace-model drift to expect over N laps.
+
+Refactored `counterfactual/engine.py` to expose `fork_and_simulate` (the
+fork mechanics, taking `overrides` directly) with `simulate_counterfactual`
+as a thin wrapper that turns a `Decision` into overrides via
+`apply_decision` and calls it. Tests now assert `simulate_counterfactual(
+no_op_decision).lap_states == fork_and_simulate(overrides={}).lap_states`
+directly, at both the late fork (HAM lap 48, 22 laps remaining) and the
+early one (BOT lap 5, 65 laps remaining).
+
+**The exact-equality version immediately caught a real bug the tolerance-
+based version had missed**: at lap 50 (right after HAM's real multi-lap
+pit transition, see the previous entry), the no-op counterfactual computed
+`lap_time_s=89.2s`; the override-free reference computed `78.78s` for the
+exact same lap. Root cause: `_apply_change_pit_lap`'s "new stint" branch
+unconditionally marked the tyre-reset lap as the out-lap
+(`is_out_lap = lap_number == shifted_new_stint_start_lap`), which is
+correct in the ordinary one-lap-transition case but double-counts when the
+transition spans more than one lap — HAM's real transition already carries
+the out-lap flag on the *earlier* transition lap (49, not 50), so marking
+50 too added a second, spurious pit-lane-time penalty (`compose_lap_time_s`
+adds `pit_lane_time_s` whenever `is_out_lap` is true) that doesn't exist in
+reality. Fixed: the "new stint" branch now only marks the reset lap as the
+out-lap when `transition_width == 1` (no separate transition-zone lap
+exists to carry that flag instead). Exactly the outcome predicted: the
+sharper test caught a bug the looser one didn't, as a hard mismatch rather
+than a judgement call about whether the drift "looked too big."
+
+**Pit-loss circuit sanity check**, per the request for a check beyond
+`strategy_direction_match_rate` (already flagged as near-tautological now
+that pitters are mechanically reinserted by cumulative time): fitted
+`pit_lane_loss_s` across the catalogue — Hungarian 20.96s, Mexican 22.73s,
+Australian 24.80s, Monaco 28.13s, Spanish 23.65s. Checked against commonly
+cited circuit figures (general knowledge, not a hard verified source):
+Hungarian/Mexican/Australian/Spanish all land in a plausible 20-25s band.
+**Monaco's 28.13s stands out** — Monaco is commonly cited as one of the
+*lowest* pit-loss circuits (~19-21s) despite its cramped pit lane, because
+the lap itself is so short; a fitted value notably above every other
+circuit, on the race already flagged with the catalogue's worst tyre-cell
+fallback fraction, is a second independent signal pointing the same
+direction. Not chased to a root cause this session, consistent with
+Monaco's existing exclusion from the gate.
+
+**Demo rebuilt**: the previous HAM lap-48-to-44 demo was correctly
+rejected as content-free ("he wins both ways" is the least interesting
+possible output — a broken engine that always returned reality would
+produce the same chart). Replaced with 2019 Hungary's actual argument:
+Red Bull left Verstappen out for a 42-lap second stint (lap 26-67) on
+HARDs and didn't cover Hamilton's late stop, which undercut him for the
+win. Counterfactual: VER's stop pulled from lap 67 to lap 50 (17 laps
+earlier — the easier, interpolation-safe direction for the *shortened*
+HARD stint; the *lengthened* SOFT stint that follows is a genuine
+extrapolation past VER's own 3-lap real sample on it, though within the
+range other drivers' pooled SOFT data covers). Result, checked across a
+10-seed ensemble: VER finishes P2 in every seed (no classification flip),
+but the *margin* changes completely — real: HAM wins by ~18-24s after the
+undercut; counterfactual: VER stays within 0.3s of the lead at the flag,
+a photo finish rather than a comfortable win. Gap-trace chart generated
+and shown. A materially different, informative answer, even without a
+position change — this is closer to the actual product experience than a
+binary win/lose flip would be.
+
+147 tests pass (unchanged count; two tests rewritten, not added). Not done
+this pass: `counterfactual/diff.py`, the remaining five decision types, and
+chasing the Monaco pit-loss anomaly to a cause.

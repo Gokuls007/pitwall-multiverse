@@ -111,7 +111,12 @@ def _apply_change_pit_lap(snapshot: RaceSnapshot, decision: ChangePitLap) -> dic
             # Still the old stint, including the in-lap itself and any
             # multi-lap transition — compound and tyre age continue the old
             # stint's progression, matching the real data's own behaviour
-            # through an equivalent-width transition.
+            # through an equivalent-width transition. Any lap strictly
+            # between the in-lap and the (shifted) tyre-reset lap carries
+            # the out-lap flag — this is where it lands in the observed
+            # transition_width > 1 case (2019 Hungary's Hamilton: the
+            # out-lap flag is on lap 49, one lap *before* the tyre actually
+            # resets on lap 50).
             compound = old_compound
             tyre_age = old_stint_start_age + (lap_number - old_stint_start_lap)
             is_in_lap = lap_number == decision.new_lap
@@ -120,7 +125,14 @@ def _apply_change_pit_lap(snapshot: RaceSnapshot, decision: ChangePitLap) -> dic
             compound = new_stint_compound
             tyre_age = new_stint_start_age + (lap_number - shifted_new_stint_start_lap)
             is_in_lap = False
-            is_out_lap = lap_number == shifted_new_stint_start_lap
+            # Only mark the reset lap itself as the out-lap when there's no
+            # separate transition-zone lap to carry that flag instead
+            # (transition_width == 1, the ordinary case) — otherwise the
+            # transition-zone lap above already carries it, and marking
+            # this lap too would double up the out-lap (and its pit-loss
+            # time addition) on a lap that's really just a normal green-flag
+            # lap on the new tyre.
+            is_out_lap = lap_number == shifted_new_stint_start_lap and transition_width == 1
 
         overrides[(decision.driver, lap_number)] = replace(
             real,

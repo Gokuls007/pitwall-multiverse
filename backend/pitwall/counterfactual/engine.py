@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from pitwall.counterfactual.strategy import apply_decision
 from pitwall.domain.decision import Decision
-from pitwall.domain.race import RaceParameters, RaceSnapshot
+from pitwall.domain.race import LapRecord, RaceParameters, RaceSnapshot
 from pitwall.domain.result import LapState, SimulationResult
 from pitwall.simulation.engine import DIRTY_AIR_FLAG_THRESHOLD_S, _final_classification, _track_status_for_lap
 from pitwall.simulation.lap_time import compose_lap_time_s
@@ -37,10 +37,36 @@ def simulate_counterfactual(
     model's deterministic pace prediction plus genuinely modelled overtake
     uncertainty (still drawn from `rng` regardless), not a noisy
     realisation of it; see `lap_time.compose_lap_time_s`'s docstring.
+
+    Thin wrapper around `fork_and_simulate`: turns the `Decision` into
+    strategy overrides, then forks. Exists as a separate function so tests
+    can call `fork_and_simulate` directly with `overrides={}` — the "real
+    strategy throughout" reference a no-op decision must reproduce exactly,
+    not just within a tolerance (see `tests/test_counterfactual.py`: a
+    no-op counterfactual and an override-free fork are *the same
+    computation*, same seed, same code path, and must match byte-for-byte;
+    a tolerance there would only catch a fork-mechanics bug large enough to
+    exceed it, not any fork-mechanics bug).
     """
-    rng = make_rng(seed)
     overrides = apply_decision(snapshot, decision)
-    first_affected_lap = decision.first_affected_lap
+    return fork_and_simulate(
+        snapshot, race_params, overrides, decision.first_affected_lap, seed, include_noise, decisions_applied=(decision,)
+    )
+
+
+def fork_and_simulate(
+    snapshot: RaceSnapshot,
+    race_params: RaceParameters,
+    overrides: dict[tuple[str, int], LapRecord],
+    first_affected_lap: int,
+    seed: int,
+    include_noise: bool = False,
+    decisions_applied: tuple[Decision, ...] = (),
+) -> SimulationResult:
+    """The actual fork-and-resimulate mechanics, independent of any
+    `Decision` — see `simulate_counterfactual`'s docstring for why this is
+    exposed separately."""
+    rng = make_rng(seed)
 
     real_by_driver_lap = {(lap.driver, lap.lap_number): lap for lap in snapshot.laps}
     drivers_with_laps = sorted({lap.driver for lap in snapshot.laps})
@@ -49,7 +75,11 @@ def simulate_counterfactual(
     real_cum = real_cumulative_times(snapshot)
 
     lap_states: list[LapState] = []
-    notes: list[str] = [f"Applied {decision!r}, diverging from lap {first_affected_lap}."]
+    notes: list[str] = [
+        f"Applied {decisions_applied}, diverging from lap {first_affected_lap}."
+        if decisions_applied
+        else f"Override-free fork at lap {first_affected_lap} (real strategy throughout)."
+    ]
 
     # --- Verbatim real portion (spec 9.1 step 4): laps before the fork ---
     for lap in snapshot.laps:
@@ -233,7 +263,7 @@ def simulate_counterfactual(
 
     return SimulationResult(
         race_key=snapshot.race_key,
-        decisions_applied=(decision,),
+        decisions_applied=decisions_applied,
         lap_states=tuple(lap_states),
         classification=classification,
         diverged_from_lap=first_affected_lap,

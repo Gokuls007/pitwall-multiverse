@@ -1,13 +1,21 @@
 """Counterfactual engine tests (spec Part 9). The no-op test is the
-load-bearing one and is written first: apply a decision that changes
-nothing relative to reality, and the fork-and-resimulate machinery must not
-introduce drift *on its own*, beyond what's already known and quantified
-about closed-loop divergence (DECISIONS.md: adjacent-pair gap error grows
-as roughly `0.835 * sqrt(laps elapsed)`, R²=0.725, once the simulation
-starts predicting pace rather than replaying real times). A no-op forking
-late in the race (few laps remaining) should show near-zero drift; one
-forking early should show substantially more — that's the drift horizon
-showing up in a place it can be measured cleanly, not a bug.
+load-bearing one and is written first.
+
+A no-op counterfactual (a `Decision` that changes nothing relative to
+reality) forked at lap N is *the same computation* as `fork_and_simulate`
+called directly with no overrides at all, forked at lap N, same seed, same
+code path — the "closed-loop replay forked at lap N with the real
+strategy" the fork machinery must reduce to when there's no actual
+decision. These two must match byte-for-byte, not within a drift-horizon
+tolerance: a tolerance built from the expected pace-model drift (DECISIONS.md:
+adjacent-pair gap error grows as roughly `0.835 * sqrt(laps elapsed)`) would
+only catch a fork-mechanics bug large enough to exceed that budget — e.g. a
+~20s tolerance at a 22-laps-remaining fork would pass even if the fork
+machinery lost a driver an entire pit stop's worth of time. Comparing
+against the override-free reference directly isolates drift the fork
+mechanics themselves introduce from drift that's inherent to simulating
+forward at all, and would have caught both real bugs found while building
+this (see DECISIONS.md) as a hard mismatch rather than a tolerance judgement.
 """
 
 from __future__ import annotations
@@ -18,22 +26,12 @@ import pytest
 
 warnings.filterwarnings("ignore")
 
-from pitwall.counterfactual.engine import simulate_counterfactual  # noqa: E402
+from pitwall.counterfactual.engine import fork_and_simulate, simulate_counterfactual  # noqa: E402
 from pitwall.counterfactual.strategy import apply_decision  # noqa: E402
 from pitwall.domain.decision import ChangePitLap  # noqa: E402
 from pitwall.ingestion.catalogue import get_entry  # noqa: E402
 from pitwall.ingestion.loader import load_race  # noqa: E402
 from pitwall.parameters.fit_all import fit_catalogue_with_pooled_dirty_air  # noqa: E402
-
-# Fit from DECISIONS.md's gap-drift-vs-laps-elapsed measurement (pooled
-# across the catalogue, R²=0.725). A single-race, single-seed test is
-# noisier than that pooled measurement, so a safety multiplier is applied
-# on top rather than using the bare fitted constant — generous enough not
-# to flake on ordinary seed-to-seed variation, tight enough that a real
-# fork-mechanics bug (which would look like *unbounded* divergence, not
-# horizon-scaled) still fails it.
-DRIFT_C = 0.835
-DRIFT_SAFETY_MULTIPLIER = 5.0
 
 
 @pytest.fixture(scope="module")
@@ -44,68 +42,34 @@ def hungary_2019():
     return snapshot, params
 
 
-def _adjacent_gap_drift(result, snapshot, first_affected_lap) -> list[float]:
-    """|simulated adjacent-pair gap - real adjacent-pair gap| for every
-    green-flag lap at or after the fork, across all drivers."""
-    real_by_key = {(lap.driver, lap.lap_number): lap for lap in snapshot.laps}
-    by_lap: dict[int, list] = {}
-    for state in result.lap_states:
-        if state.lap_number >= first_affected_lap:
-            by_lap.setdefault(state.lap_number, []).append(state)
-
-    drifts = []
-    for lap_number, states in by_lap.items():
-        states_sorted = sorted(states, key=lambda s: s.position)
-        for i, state in enumerate(states_sorted):
-            if i == 0:
-                continue
-            real = real_by_key.get((state.driver, lap_number))
-            if real is None or real.gap_to_ahead_s is None or not real.is_usable_for_fitting:
-                continue
-            sim_gap = state.cumulative_time_s - states_sorted[i - 1].cumulative_time_s
-            drifts.append(abs(sim_gap - real.gap_to_ahead_s))
-    return drifts
-
-
-def test_no_op_pit_lap_change_stays_within_drift_horizon_late_fork(hungary_2019):
+def test_no_op_pit_lap_change_matches_override_free_fork_exactly_late(hungary_2019):
     # HAM's real second stop, 2019 Hungary: lap 48 of 70 -- 22 laps
-    # remaining. A no-op here should show only modest drift.
+    # remaining.
     snapshot, params = hungary_2019
     decision = ChangePitLap(driver="HAM", original_lap=48, new_lap=48)
-    result = simulate_counterfactual(snapshot, params, decision, seed=0, include_noise=False)
-
-    laps_remaining = snapshot.total_laps - decision.first_affected_lap
-    tolerance = DRIFT_SAFETY_MULTIPLIER * DRIFT_C * (laps_remaining**0.5)
-
-    drifts = _adjacent_gap_drift(result, snapshot, decision.first_affected_lap)
-    assert drifts, "expected at least one post-fork comparison point"
-    median_drift = sorted(drifts)[len(drifts) // 2]
-    assert median_drift < tolerance, (
-        f"no-op median adjacent-gap drift {median_drift:.2f}s exceeds horizon-scaled "
-        f"tolerance {tolerance:.2f}s ({laps_remaining} laps remaining) -- the fork "
-        "mechanics themselves may be introducing drift, not just pace-model error."
+    no_op_result = simulate_counterfactual(snapshot, params, decision, seed=0, include_noise=False)
+    reference_result = fork_and_simulate(
+        snapshot, params, overrides={}, first_affected_lap=decision.first_affected_lap, seed=0, include_noise=False
     )
 
+    assert no_op_result.lap_states == reference_result.lap_states
+    assert no_op_result.classification == reference_result.classification
 
-def test_no_op_pit_lap_change_drifts_more_when_forked_early(hungary_2019):
+
+def test_no_op_pit_lap_change_matches_override_free_fork_exactly_early(hungary_2019):
     # BOT's real first stop, 2019 Hungary: lap 5 of 70 -- 65 laps
-    # remaining. Same no-op mechanism, forked much earlier: drift should be
-    # larger than the late-fork case, and roughly horizon-scaled rather
-    # than unbounded.
+    # remaining. Same exact-match requirement forked much earlier, where a
+    # fork-mechanics bug would have more laps to compound and be easier to
+    # spot if the assertion were loose instead of exact.
     snapshot, params = hungary_2019
     decision = ChangePitLap(driver="BOT", original_lap=5, new_lap=5)
-    result = simulate_counterfactual(snapshot, params, decision, seed=0, include_noise=False)
-
-    laps_remaining = snapshot.total_laps - decision.first_affected_lap
-    tolerance = DRIFT_SAFETY_MULTIPLIER * DRIFT_C * (laps_remaining**0.5)
-
-    drifts = _adjacent_gap_drift(result, snapshot, decision.first_affected_lap)
-    assert drifts
-    median_drift = sorted(drifts)[len(drifts) // 2]
-    assert median_drift < tolerance, (
-        f"no-op median adjacent-gap drift {median_drift:.2f}s exceeds horizon-scaled "
-        f"tolerance {tolerance:.2f}s ({laps_remaining} laps remaining)"
+    no_op_result = simulate_counterfactual(snapshot, params, decision, seed=0, include_noise=False)
+    reference_result = fork_and_simulate(
+        snapshot, params, overrides={}, first_affected_lap=decision.first_affected_lap, seed=0, include_noise=False
     )
+
+    assert no_op_result.lap_states == reference_result.lap_states
+    assert no_op_result.classification == reference_result.classification
 
 
 def test_no_op_pit_lap_change_reproduces_exact_strategy_for_the_driver(hungary_2019):
