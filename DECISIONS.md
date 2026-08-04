@@ -600,13 +600,15 @@ this order (each is a distinct problem, not one fix cascading into the next):
   | `base_offset_s` (tyre pace offset) | **Hybrid** — starts from this driver's own fitted value, but 58-80% of drivers per race need the monotonic-ordering prior to correct it (see above); the *ordering and minimum separation* are a declared prior even though the starting point is fitted |
   | `pit_lane_loss_s` | **Fitted** from real in/out-lap timing — but downstream of the pace model above, so it inherits any bias in it (see next entry) |
   | `pit_stop_stationary_s` | **Prior** (2.4s constant) — every race, not separable from transit loss without telemetry |
-  | `dirty_air` (`DirtyAirModel`) | **Prior**, and as of 2026-08-04 **no longer applied in the simulator at all** — still fitted (always rejected, falls back to the same prior every race) and stored on `RaceParameters` for diagnostics, but `compose_lap_time_s` no longer takes it. Superseded by the stuck-behind clamp + blue-flag rule below (see Phase 3 section) |
-  | `overtake_difficulty` | **Fitted**, though acknowledged as a noisy single-race estimate (spec 6.7) |
+  | `dirty_air` (`DirtyAirModel`) | **Fitted** as of 2026-08-04, after being prior-only for most of this project's life. Per-race fitting fails on every catalogue race for a diagnosed reason (the clean-air baseline's own OLS intercept absorbs mean traffic exposure, so a curve decaying to zero can't match residuals whose true large-gap asymptote is ~-0.47s). `dirty_air.fit_pooled_dirty_air_across_races` fits it from pooled cross-race residuals with that asymptote corrected: `max_penalty_s` 1.290 [0.846, 1.850], `decay_scale_s` 0.864 [0.564, 1.494] (98 race×driver clusters, 500 bootstrap resamples). Applied at 0.912s [0.669, 1.186] at a 0.3s gap decaying to 0.127s [0.049, 0.268] at 2.0s |
+  | `overtake_difficulty` | **Fitted**, though acknowledged as a noisy single-race estimate (spec 6.7). Now known to be load-bearing for counterfactual win fractions — see the Phase 4 clamp entries |
   | `overtake_skill` / `defence_skill` | **Prior** (uniform 0.5) — every driver, every race, by design (spec 6.7 explicitly permits this) |
   | `sc_lap_time_multiplier` | **Fitted** only on races with an actual SC period (2/5 current races); **prior** otherwise |
   | `vsc_lap_time_multiplier` | **Fitted** only on races with an actual VSC period (1/5 current races); **prior** otherwise |
   | `MAX_GAP_CLOSURE_PER_LAP_S` (SC gap-closure rate) | **Prior** (15.0s/lap) — calibrated by eye against exactly one race's telemetry (2019 Monaco); the catalogue's only other full-SC period (2021 Spanish) couldn't cross-check it (lapped-traffic wraparound confounds the reconstruction). Single-data-point, unverified against a second case |
   | `BLUE_FLAG_YIELD_PROBABILITY` (lapped-car yield rate) | **Prior** (0.9) — no per-incident blue-flag-compliance-time measurement exists in this project's ingestion to fit against; grounded in the rule's existence, not its exact timing |
+  | `AR1_PHI` (pace-noise autocorrelation) | **Fitted** (0.622) — lag-1 autocorrelation of open-loop green-flag residuals, within stints and between consecutive laps only; 5,373 pairs pooled, per-race 0.45-0.68. `scripts/fit_noise_autocorrelation.py` re-fits and fails on >0.05 drift. Caveat that belongs in the ledger: autocorrelated residuals are the signature of a *missing regressor*, so this is an upper bound absorbing unexplained persistence (track evolution, sustained traffic), not a physical constant |
+  | `MIN_FOLLOWING_GAP_S` (stuck-behind floor) | **Fitted** (0.580s) — 5th percentile of observed real `gap_to_ahead_s` across the catalogue, 5,435 green-flag laps, per-race p5 clustered 0.499-0.772s. `scripts/fit_min_following_gap.py` re-fits and fails on >0.05 drift. Was a 0.3s placeholder that turned out to sit at the *1st* percentile — a momentary minimum being applied as a sustained floor. Load-bearing for product output: this is the margin the tool reports whenever a counterfactual brings a car into contention |
 
   This is not necessarily wrong — it is the honest consequence of what a
   single race's data can and can't identify, and the spec itself sanctions
@@ -814,6 +816,32 @@ The overall picture has moved further toward "mostly declared priors, with a
 handful of genuinely data-distinguishable exceptions" than the second pass's
 already-humbler framing. This should be reflected in Phase 8's README, not
 just here.
+
+**Superseded 2026-08-04 (Phase 3/4)** — this table is kept for the history
+of how the accounting evolved, but three rows above are now out of date, and
+the direction of travel reversed. See the first table in this file (the
+"Honest accounting" entry) for the current ledger. What moved from prior to
+fitted:
+
+  - `dirty_air`: now **fitted** from pooled cross-race residuals with the
+    baseline-asymptote correction that had been blocking every per-race fit,
+    with clustered bootstrap CIs.
+  - `AR1_PHI` (new term, pace-noise autocorrelation): **fitted** at 0.622
+    from 5,373 consecutive-lap residual pairs — with the caveat that
+    autocorrelation absorbs missing regressors, so it's unexplained
+    persistence rather than a physical constant.
+  - `MIN_FOLLOWING_GAP_S` (new term, stuck-behind floor): **fitted** at
+    0.580s from the 5th percentile of observed real gaps, replacing a
+    placeholder that turned out to encode the 1st percentile — a momentary
+    minimum applied as a sustained floor.
+
+So the honest current framing is less bleak than the line above: still a
+simulator with meaningful declared priors (stationary pit time, driver
+skill, SC closure rate, blue-flag yield, and the compound-separation floor
+that remains prior-dominated at 61%), but three of the terms that most
+directly shape *output the product shows a user* are now fitted from real
+data with reproducible scripts and drift guards. Phase 8's README limitations
+section should be drawn from the current table, not this one.
 
 ---
 
