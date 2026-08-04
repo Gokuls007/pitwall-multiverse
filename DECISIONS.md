@@ -1926,3 +1926,85 @@ drivers bar in 4/5 races; held-out MAE does not (16% of driver-race cells
 under threshold); and the position-tracking problem is large in both
 identity and magnitude, not merely identity. Recorded plainly rather than
 carried forward as "pace model passes, ship the position caveat."
+
+### 2026-08-04 — Retraction: the held-out check above was confounded; corrected version is materially better news
+
+External review found the flaw in the leave-one-stint-out design used
+above, and it's a direct consequence of a finding Phase 2 already made and
+documented: within one stint, tyre age and lap number are perfectly
+collinear, so degradation and fuel effect are only separable by a driver
+revisiting a compound at a *different* race offset — something only one or
+two drivers per race actually do. Most drivers have 2-3 stints total.
+Removing an entire stint (as leave-one-stint-out did) leaves a fit that's
+rank-deficient or near-singular for exactly the reason Phase 2 already
+proved, independent of whether the pace model extrapolates well. The 52
+NaN predictions dropped from that experiment were the visible failures;
+the surviving fits were degraded by the same mechanism, just not all the
+way to NaN. **The 16% (4/25) headline from the previous entry is mostly
+measuring the fitting procedure collapsing, not genuine extrapolation
+error, and is retracted as the basis for any conclusion about the pace
+model's forward-prediction quality.** (Also flagged and corrected in the
+same review: that 16% was a fraction of driver-*stint* cells; the in-sample
+55-60% it was being compared against is a fraction of *drivers* — different
+denominators, not the same comparison at all.)
+
+**Corrected experiment: truncate the last few laps of one stint (keep
+every stint present, just shorten one), fit on everything else, predict
+the truncated tail.** This is exactly what "pitted a few laps later" asks
+for — same driver, same compound, a tyre age a few laps past anything in
+the fitting sample — while leaving every stint Phase 2's identifiability
+argument needs still present. Implemented as `scripts/held_out_check.py`
+(a script, not narrative numbers in VALIDATION.md, per review — this is a
+diagnostic worth re-running after any parameter change, and a comment
+would go stale silently). Result, truncating the last 4 laps of every
+stint with enough laps to spare them (192 truncated-stint cells across the
+catalogue):
+
+| | In-sample (same test laps) | Held-out (truncated tail) |
+|---|---|---|
+| Mean MAE | 0.640s | 0.796s |
+| Median MAE | 0.453s | 0.540s |
+| Cells under 0.5s | — | 47.4% (91/192) |
+
+A real but modest degradation — not the collapse the confounded version
+showed. Checked the confound is actually gone: held-out MAE does *not*
+improve with more remaining stints (0.787s at 2 stints, 0.790s at 3,
+0.900s at 4 — flat to slightly worse, n=6 for the 4-stint group is thin),
+and condition numbers across all groups are in a similar moderate range
+(56-111, nowhere near degenerate) — consistent with the truncation design
+actually preserving identifiability, unlike the retracted version.
+
+**Gap-drift-vs-laps-elapsed, the number review flagged as most decisive
+for Phase 4 viability.** Measured `|simulated adjacent-pair gap - real
+adjacent-pair gap|` binned by lap number across the catalogue (closed-loop
+replay, seed 0) and fit against `c * sqrt(n)` (a random-walk null
+hypothesis — per-lap error accumulating without a systematic direction).
+Median error fits `sqrt(n)` reasonably well (R²=0.725, `c=0.835`):
+predicted vs. observed median error at n=10/30/50/70 laps is
+2.64s/1.39s, 4.57s/3.55s, 5.91s/8.13s, 6.99s/9.07s — order-of-magnitude
+consistent, some real deviation at the tails. Because counterfactuals fork
+from real state at the decision lap and only diverge *forward*, this `c`
+lets the horizon be read directly instead of assumed: a decision with
+`N` laps remaining should expect roughly `0.835 * sqrt(N)` seconds of
+adjacent-gap drift by the end — about 1.9s at N=5, 3.7s at N=20, 5.9s at
+N=50 — a small fraction of the 6-9s+ observed over a full 60-70 lap
+from-lap-1 replay. Quantifies, rather than just asserts, that late-race
+counterfactuals face meaningfully less drift than the full-replay gate
+measures.
+
+**Combined effect on the Phase 4 question**: both the extrapolation and
+the drift-horizon findings are more favourable than the previous, now-
+retracted entry suggested. Held-out truncated-tail accuracy (47.4% under
+threshold) is a real but modest step down from in-sample, not a collapse;
+and position drift is bounded and roughly quantifiable as a function of
+laps remaining, not an unbounded full-race problem for a counterfactual
+that starts from real state partway through. This supports treating a
+validated (with real, if not perfect, held-out accuracy) pace model plus a
+*quantified* position-drift horizon as a legitimate place to build a v1
+from — provided it's scoped explicitly (e.g. late-race decisions where
+`N` is small, and/or reporting Monte Carlo ensemble outcomes as
+distributions rather than single points, leaning on spec 6.10's existing
+requirement rather than asking a single trajectory to be exactly right).
+Still the human running the project's call, not this session's — but the
+numbers it's being made on are now real, checked twice over, and
+considerably less bleak than the immediately preceding entry.

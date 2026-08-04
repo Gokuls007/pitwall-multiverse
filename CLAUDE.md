@@ -432,14 +432,39 @@ Phase 3 (validation) is a hard gate — no counterfactuals until replay reproduc
   the asymptote plus the sample's mean dirty-air exposure; the offset-
   recentring hypothesis is retired after a third failed test.
 
-  **Proceeding to Phase 4 is not yet supported by these numbers** — a
-  validated pace model plus a known-imperfect position loop was the
-  previous entry's framing for a defensible v1, but "validated" meant
-  in-sample fit, not held-out forward prediction, which is what a
-  counterfactual actually needs. Left for the human running the project to
-  decide (not this session's call), but the honest numbers to decide from
-  are: in-sample passes, held-out doesn't, and the position-tracking
-  problem is large in both identity and magnitude.
+  **The held-out result above was itself retracted after review found it
+  confounded — corrected version is materially better news.** Leave-one-
+  stint-out removes a whole stint; Phase 2 already proved tyre age and lap
+  number are perfectly collinear *within* a stint, so most drivers'
+  reduced fits were rank-deficient or near-singular for a reason that has
+  nothing to do with extrapolation quality. Corrected experiment
+  (`scripts/held_out_check.py`): truncate the last 4 laps of a stint —
+  every stint stays present, matching how "pitted a few laps later"
+  actually stresses the fit — and predict the truncated tail. Result: 0.640s
+  in-sample vs. 0.796s held-out mean (0.453s vs. 0.540s median), 47.4%
+  (91/192) of truncated-stint cells under 0.5s. A real but modest
+  degradation, not the collapse the confounded version showed — and
+  confirmed not to be the same confound (held-out MAE doesn't improve with
+  more remaining stints; condition numbers are all in a moderate,
+  non-degenerate 56-111 range).
+
+  **Gap-drift-vs-laps-elapsed, quantified rather than assumed**: median
+  `|sim gap - real gap|` fits `0.835 * sqrt(laps elapsed)` reasonably well
+  (R²=0.725). Since a counterfactual forks from real state at the decision
+  lap and only diverges forward, this reads directly as a horizon: ~1.9s
+  drift at 5 laps remaining, ~3.7s at 20, ~5.9s at 50 — well short of the
+  6-9s+ a full 60-70-lap from-lap-1 replay accumulates. Late-race decisions
+  face materially less drift than the full-replay gate measures.
+
+  **Revised position on proceeding**: both corrections point the same
+  direction — real, held-out-validated (not just in-sample) pace accuracy
+  with a modest, quantified degradation, and a position-drift problem
+  that's bounded and horizon-quantifiable rather than an open-ended
+  full-race failure. Still the human running the project's call, not this
+  session's, but it now supports a scoped v1 (e.g. late-race decisions
+  where drift is small, reporting Monte Carlo ensemble outcomes as
+  distributions per spec 6.10 rather than single points) as a legitimate
+  place to build from, more than the immediately preceding entry did.
 
   All 141 tests pass. Full numbers, every rejected alternative and why,
   and the bucketed residual/CI/held-out tables: DECISIONS.md's Phase 3 section, most
