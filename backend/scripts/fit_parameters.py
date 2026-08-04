@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from pitwall.ingestion.catalogue import CATALOGUE  # noqa: E402
 from pitwall.ingestion.loader import load_race  # noqa: E402
-from pitwall.parameters.fit_all import fit_race_parameters, save_race_parameters  # noqa: E402
+from pitwall.parameters.fit_all import fit_catalogue_with_pooled_dirty_air, save_race_parameters  # noqa: E402
 
 
 def _print_summary(race_key: str, params) -> None:
@@ -51,11 +51,15 @@ def _print_summary(race_key: str, params) -> None:
 
 
 def main() -> None:
-    for entry in CATALOGUE:
-        snapshot, _report = load_race(entry.year, entry.fastf1_event_identifier)
-        params = fit_race_parameters(snapshot)
+    # Dirty air needs pooling across the whole catalogue to be identifiable
+    # (see DECISIONS.md / parameters/dirty_air.py) — fit every race together
+    # rather than one at a time.
+    snapshots = [load_race(entry.year, entry.fastf1_event_identifier)[0] for entry in CATALOGUE]
+    params_by_key = fit_catalogue_with_pooled_dirty_air(snapshots)
+    for snapshot in snapshots:
+        params = params_by_key[snapshot.race_key]
         path = save_race_parameters(params)
-        _print_summary(entry.race_key, params)
+        _print_summary(snapshot.race_key, params)
         print(f"Saved to {path}")
 
 

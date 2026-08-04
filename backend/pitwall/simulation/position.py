@@ -1,0 +1,197 @@
+"""Gap tracking and position resolution (spec 7.1 step 3-4, 7.2).
+
+Spec 7.2's subtle but important rule: gaps derived from cumulative time and
+positions resolved by overtaking can disagree — a car can be "ahead on
+cumulative time" while stuck behind on track. **Track position is
+authoritative**; cumulative time is only the input to gap calculation and to
+deciding whether a pass is *attempted*, never used to silently reorder the
+field. Getting this backwards produces the classic bug where cars teleport
+past each other with no overtake ever modelled. Every position change here
+goes through `overtake.pass_probability` / `resolve_pass` — even when a
+following car's cumulative time has already dropped below the car ahead's
+(which reads as "gap <= 0"), that only makes the pass *more likely to be
+attempted*, not automatic.
+"""
+
+from __future__ import annotations
+
+import numpy as np
+
+from pitwall.simulation.overtake import pass_probability, resolve_pass
+
+# Reuses the exact threshold `parameters/overtaking.py` fits circuit
+# overtake_difficulty against, so the simulator's notion of "close enough to
+# attempt a pass" matches the data the difficulty parameter was measured from.
+# This is deliberately *not* the same distance as MIN_FOLLOWING_GAP_S below:
+# 1.5s is "is a pass plausible" (DRS-range-ish), not "is this car physically
+# unable to close further." A car 1.4s back is still closing; a car 0.3s
+# back is in the leader's gearbox. Conflating the two made the stuck-behind
+# clamp fire on every lap two cars spent anywhere within 1.5s of each other
+# (25-64% of all green-flag laps, measured on the catalogue) instead of only
+# when a car was genuinely blocked.
+CLOSE_PROXIMITY_GAP_S = 1.5
+
+# Not fitted (originally) — see DECISIONS.md for the pooled cross-race
+# dirty-air-residual bucketing that grounds this: the gap below which mean
+# signed lap-time residual against the clean-air pace model stops growing
+# with proximity is read directly off the buckets as the empirical minimum
+# following distance, rather than guessed.
+MIN_FOLLOWING_GAP_S = 0.3
+
+# Not fitted — a declared prior (Part 14 rule 1): real F1 requires blue-flag
+# compliance, so a lapped car yields to a car un-lapping/lapping it
+# near-immediately, rather than contesting it like a genuine fight for
+# position. Not exactly 1.0 since real compliance sometimes takes a lap or
+# two, not one corner, and this project's ingestion has no per-incident
+# blue-flag-compliance-time measurement to fit against. Spec 6.9 gestures at
+# lapped traffic ("additional cost for laps spent unable to pass a car not
+# racing for position") but never built a distinct rule for it — without one,
+# the stuck-behind constraint below has no way to distinguish a lapped
+# backmarker from a genuine rival, and treats both as an ~1%-per-lap fight
+# under a high-`overtake_difficulty` circuit, letting a single slow
+# backmarker anchor a whole train of faster cars behind it indefinitely.
+BLUE_FLAG_YIELD_PROBABILITY = 0.9
+
+
+def _is_a_lap_down(
+    driver: str, leader: str, cumulative_times: dict[str, float], lap_times_this_lap: dict[str, float]
+) -> bool:
+    if driver == leader:
+        return False
+    lap_estimate_s = lap_times_this_lap.get(leader, 0.0)
+    if lap_estimate_s <= 0:
+        return False
+    return cumulative_times[driver] - cumulative_times[leader] >= lap_estimate_s
+
+
+def resolve_positions(
+    order: list[str],
+    cumulative_times: dict[str, float],
+    lap_times_this_lap: dict[str, float],
+    overtake_difficulty: float,
+    rng: np.random.Generator,
+    clamped_this_lap: set[str] | None = None,
+) -> list[str]:
+    """One left-to-right pass over adjacent pairs in current track-position
+    order. Each pair is checked at most once per lap (no chained re-checks
+    of a just-swapped pair) — simple, stable, and matches spec 7.1's "for
+    each pair in close proximity" as a single resolution pass, not a fixed
+    point iteration.
+
+    Mutates `cumulative_times` and `lap_times_this_lap` in place for the
+    stuck-behind constraint below — consistent with how `engine.py` already
+    treats both as the running per-lap state (e.g. `compress_field_under_sc`
+    reassigns `cumulative_times` entries the same way). `clamped_this_lap`,
+    if given, is also mutated in place: the set of drivers the floor clamp
+    actually fired for this call, for `LapState.stuck_behind_clamped` and
+    for measuring the clamp's true firing rate directly rather than
+    inferring it after the fact — an earlier attempt to infer it from
+    exact-tied lap times was the equality clamp's signature, not this one's
+    (the floor clamp only rarely produces an exact tie), and silently
+    understated or overstated the rate depending on race. See DECISIONS.md.
+
+    A car that closes to within `MIN_FOLLOWING_GAP_S` of the car ahead
+    without completing a pass is physically wheel-to-wheel: it cannot close
+    *further* than that without actually passing. Above that floor, a
+    following car closes at its own genuine pace, exactly like a real car —
+    the constraint only ever stops a gap from crossing the floor, it never
+    equalises lap times outright. (An earlier version of this constraint did
+    exactly that — set the follower's lap time equal to the leader's
+    whenever they were within `CLOSE_PROXIMITY_GAP_S` — which fired on
+    25-64% of all green-flag laps, since two cars merely running together
+    within 1.5s for an ordinary stretch of racing is completely normal, not
+    a sign either one is blocked. See DECISIONS.md.) Without any floor at
+    all, a follower can silently bank cumulative-time advantage lap after
+    lap while never actually gaining track position — spec 6.9's
+    "additional cost for laps spent unable to pass" (previously undisclosed
+    as not separately modelled, folded into dirty air's penalty instead —
+    see lap_time.py). That banked, invisible advantage is exactly what let
+    a Monaco backmarker end up with lower cumulative time than the driver
+    ahead of it despite never passing: `compress_field_under_sc`'s zero
+    floor was a correct patch on the *symptom* (the negative gap it
+    produced), not this cause.
+
+    The blue-flag check below runs first for exactly this reason: without
+    it, the clamp itself can pin a whole train of faster cars behind a
+    single lapped backmarker, since each car in the train would otherwise
+    be limited relative to the one directly ahead of it.
+    """
+    order = list(order)
+    for i in range(1, len(order)):
+        ahead, behind = order[i - 1], order[i]
+        gap_s = cumulative_times[behind] - cumulative_times[ahead]
+
+        if gap_s > CLOSE_PROXIMITY_GAP_S:
+            continue  # not close enough on track for a pass attempt or the stuck-behind constraint
+
+        leader = order[0]
+        if _is_a_lap_down(ahead, leader, cumulative_times, lap_times_this_lap) and not _is_a_lap_down(
+            behind, leader, cumulative_times, lap_times_this_lap
+        ):
+            # `ahead` is lapped traffic being caught by `behind`, not a rival
+            # contesting the same position: blue flags apply, not the normal
+            # difficulty-gated fight, and never the stuck-behind clamp (a
+            # backmarker slow to move over doesn't force the faster car
+            # behind it down to its pace).
+            if resolve_pass(rng, BLUE_FLAG_YIELD_PROBABILITY):
+                order[i - 1], order[i] = order[i], order[i - 1]
+            continue
+
+        pace_delta_s = lap_times_this_lap[ahead] - lap_times_this_lap[behind]
+        if pace_delta_s > 0:
+            probability = pass_probability(pace_delta_s, overtake_difficulty)
+            if resolve_pass(rng, probability):
+                order[i - 1], order[i] = order[i], order[i - 1]
+                continue
+
+            # Faster this lap but the pass failed: can still close ground
+            # down to the minimum following distance, just not past it
+            # without completing a pass.
+            if gap_s < MIN_FOLLOWING_GAP_S:
+                deficit = MIN_FOLLOWING_GAP_S - gap_s
+                lap_times_this_lap[behind] += deficit
+                cumulative_times[behind] += deficit
+                if clamped_this_lap is not None:
+                    clamped_this_lap.add(behind)
+
+    return order
+
+
+def reorder_pitting_drivers(
+    order: list[str], cumulative_times: dict[str, float], pitted_this_lap: set[str]
+) -> list[str]:
+    """A driver who pitted this lap is mechanically re-inserted into track
+    position by cumulative time — there is no contested on-track battle
+    during a pit stop (the car is off the racing line), so this bypasses
+    `resolve_positions`'s probabilistic model entirely.
+
+    This matters: without it, a driver who loses 20+ seconds in the pits
+    only falls behind a following car if that car "wins" a proximity-gated
+    probabilistic pass against them — but the gap between them is enormous
+    (tens of seconds) immediately after the stop, so `resolve_positions`'s
+    `CLOSE_PROXIMITY_GAP_S` check almost never lets that attempt happen at
+    all. Found concretely on 2019 Hungary: a real 5th-to-20th pit-stop drop
+    showed as no position change whatsoever in the simulation before this
+    fix. Non-pitting drivers keep their relative order here (their genuine
+    on-track battles are still resolved by `resolve_positions`, called
+    separately).
+    """
+    non_pitters = [d for d in order if d not in pitted_this_lap]
+    pitters = [d for d in order if d in pitted_this_lap]
+
+    result = list(non_pitters)
+    for driver in pitters:
+        insert_at = len(result)
+        for i, other in enumerate(result):
+            if cumulative_times[driver] < cumulative_times[other]:
+                insert_at = i
+                break
+        result.insert(insert_at, driver)
+    return result
+
+
+def compute_gaps_to_leader(order: list[str], cumulative_times: dict[str, float]) -> dict[str, float]:
+    if not order:
+        return {}
+    leader_time = cumulative_times[order[0]]
+    return {driver: cumulative_times[driver] - leader_time for driver in order}

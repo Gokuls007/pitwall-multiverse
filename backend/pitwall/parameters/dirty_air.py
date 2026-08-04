@@ -68,6 +68,143 @@ TRAFFIC_DISPARITY_THRESHOLD_S = 1.5
 # bounds rather than left as a quieter "poor R2" footnote.
 MIN_ACCEPTABLE_R_SQUARED = 0.05
 
+# Reference gap beyond which dirty air is assumed negligible (spec 6.6:
+# "negligible beyond roughly two seconds" — 5s gives margin). Used only to
+# select the "isolated" subsample that anchors the asymptote below, not as a
+# hard cutoff in the fitted curve itself.
+ASYMPTOTE_REFERENCE_GAP_S = 5.0
+MIN_ISOLATED_OBSERVATIONS = 30
+
+
+def fit_pooled_dirty_air_across_races(
+    races: list[tuple[RaceSnapshot, dict[str, DriverParams], float]],
+) -> tuple[DirtyAirModel, float, dict]:
+    """Pool (gap, excess) observations across every race in `races` — each
+    entry `(snapshot, that race's already-fitted driver_params, that race's
+    fuel_effect_s_per_lap)` — and fit one dirty-air curve plus a base-pace
+    correction from the combined sample. `fit_dirty_air` above fits this per
+    race and is rejected on every catalogue race (not enough power from one
+    race's data, spec 6.6's own admission that per-driver sensitivity isn't
+    identifiable from a single race, extended here to the curve itself); this
+    is the cross-race pool that gives it enough.
+
+    Critical correction this function makes that a naive pooled fit would
+    miss: `expected_clean_pace_s`'s `base_pace_s` is the intercept of a
+    regression fit on *all* usable green-flag laps, most of which had some
+    car ahead — so it's average-traffic pace, not zero-traffic pace, and
+    every gap bucket's raw excess is measured against the wrong zero point.
+    Confirmed directly: pooling the same 5,752 laps that went into the
+    per-driver fits gives a lap-weighted mean residual of -0.253s, not
+    ~0 — a real, non-trivial shift baked in by the isotonic offset
+    projection and pooled-cell fallbacks applied after the OLS fit, not
+    noise. The isolated subsample (gap >= `ASYMPTOTE_REFERENCE_GAP_S`) is
+    used as the empirical zero-traffic reference instead: excess is
+    corrected by subtracting its mean (the "asymptote") before the curve is
+    fit, and that same asymptote is returned separately so callers can shift
+    `base_pace_s` back to genuinely represent clean-air pace. Without this,
+    `fit_dirty_air`'s per-race attempts were fitting an exponential that
+    decays to *zero* onto data whose true large-gap asymptote is around
+    -0.47s — no parameter choice can do that, which is exactly how those
+    attempts landed on negative R² and bound-pinned parameters. The model
+    wasn't wrong about the phenomenon; it was missing the offset.
+
+    Returns `(DirtyAirModel, base_pace_correction_s, diagnostics)`. Callers
+    add `base_pace_correction_s` to every driver's `base_pace_s` (uniformly
+    — this pooled fit has no per-driver resolution to offer) before using
+    the returned model.
+    """
+    gaps: list[float] = []
+    excess: list[float] = []
+
+    for snapshot, driver_params, fuel_effect_s_per_lap in races:
+        ahead_lap_time = _ahead_lap_time_by_driver_lap(snapshot)
+        for lap in snapshot.laps:
+            if not lap.is_usable_for_fitting or lap.lap_time_s is None:
+                continue
+            if lap.gap_to_ahead_s is None:
+                continue
+            ahead_time = ahead_lap_time.get((lap.driver, lap.lap_number))
+            if ahead_time is None:
+                continue
+            if abs(lap.lap_time_s - ahead_time) > TRAFFIC_DISPARITY_THRESHOLD_S:
+                continue
+            params = driver_params.get(lap.driver)
+            if params is None:
+                continue
+            expected = expected_clean_pace_s(
+                params, fuel_effect_s_per_lap, lap.compound, lap.tyre_life, lap.lap_number
+            )
+            if expected is None:
+                continue
+            gaps.append(lap.gap_to_ahead_s)
+            excess.append(lap.lap_time_s - expected)
+
+    diagnostics: dict = {"n_pooled_observations": len(gaps)}
+    if len(gaps) < 20:
+        model, fb_diag = _fallback(f"only {len(gaps)} pooled dirty-air observations (<20)", len(gaps))
+        return model, 0.0, {**diagnostics, **fb_diag}
+
+    gaps_arr = np.array(gaps)
+    excess_arr = np.array(excess)
+
+    isolated_mask = gaps_arr >= ASYMPTOTE_REFERENCE_GAP_S
+    n_isolated = int(isolated_mask.sum())
+    diagnostics["n_isolated_observations"] = n_isolated
+    diagnostics["n_tightest_bucket_lt_0.15s"] = int(np.sum(gaps_arr < 0.15))
+    if n_isolated < MIN_ISOLATED_OBSERVATIONS:
+        model, fb_diag = _fallback(
+            f"only {n_isolated} isolated (gap>={ASYMPTOTE_REFERENCE_GAP_S}s) observations "
+            f"to anchor the asymptote (<{MIN_ISOLATED_OBSERVATIONS})",
+            len(gaps),
+        )
+        return model, 0.0, {**diagnostics, **fb_diag}
+
+    asymptote_s = float(excess_arr[isolated_mask].mean())
+    diagnostics["asymptote_s"] = asymptote_s
+    corrected_excess = excess_arr - asymptote_s
+
+    try:
+        (max_penalty, decay_scale), _ = curve_fit(
+            _exp_decay,
+            gaps_arr,
+            corrected_excess,
+            p0=[0.5, 1.0],
+            bounds=(
+                [_MAX_PENALTY_BOUNDS[0], _DECAY_SCALE_BOUNDS[0]],
+                [_MAX_PENALTY_BOUNDS[1], _DECAY_SCALE_BOUNDS[1]],
+            ),
+            maxfev=5000,
+        )
+    except RuntimeError as exc:
+        model, fb_diag = _fallback(f"pooled curve_fit did not converge ({exc})", len(gaps))
+        return model, 0.0, {**diagnostics, **fb_diag}
+
+    predicted = _exp_decay(gaps_arr, max_penalty, decay_scale)
+    sse = float(np.sum((corrected_excess - predicted) ** 2))
+    sst = float(np.sum((corrected_excess - corrected_excess.mean()) ** 2))
+    r2 = 1.0 - sse / sst if sst > 0 else 0.0
+    diagnostics["r_squared_before_acceptance_check"] = r2
+
+    def _pinned(value: float, bounds: tuple[float, float]) -> bool:
+        span = bounds[1] - bounds[0]
+        return abs(value - bounds[0]) < 0.01 * span or abs(value - bounds[1]) < 0.01 * span
+
+    max_pinned = _pinned(max_penalty, _MAX_PENALTY_BOUNDS)
+    decay_pinned = _pinned(decay_scale, _DECAY_SCALE_BOUNDS)
+
+    if r2 < MIN_ACCEPTABLE_R_SQUARED or max_pinned or decay_pinned:
+        reason = (
+            f"pooled fit r2={r2:.3f} (min acceptable {MIN_ACCEPTABLE_R_SQUARED}), "
+            f"max_penalty_pinned={max_pinned}, decay_scale_pinned={decay_pinned} "
+            f"— fit converged but is not a real signal"
+        )
+        model, fb_diag = _fallback(reason, len(gaps))
+        return model, 0.0, {**diagnostics, **fb_diag}
+
+    diagnostics["fallback_used"] = False
+    diagnostics["r_squared"] = r2
+    return DirtyAirModel(float(max_penalty), float(decay_scale), r2, len(gaps)), asymptote_s, diagnostics
+
 
 def _exp_decay(gap: np.ndarray, max_penalty_s: float, decay_scale_s: float) -> np.ndarray:
     return max_penalty_s * np.exp(-gap / decay_scale_s)
