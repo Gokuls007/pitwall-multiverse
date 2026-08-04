@@ -2689,3 +2689,67 @@ Frontend: 5 tests. Backend: 166. Next: StrategyTimeline sharing the
 established lap axis, then DecisionPanel, Classification, and the apparatus
 tree last (with dummy-data legibility testing at depth 3+ before committing
 to its layout).
+
+### 2026-08-04 — Looking at the rendered chart found three problems no programmatic check caught
+
+Every automated check passed — palette tokens live, both modes wiring
+correctly, contrast floors cleared, mobile scroll mechanism working — and
+the chart was still not usable. Opening it surfaced three faults, all
+invisible to assertions about structure:
+
+1. **The counterfactual was off-screen.** Divergence at lap 50, chart
+   defaulted to scroll-left, so laps 50-70 — the entire alternate history —
+   sat outside the viewport. The auto-scroll-to-divergence behaviour had
+   been *specified* in the design plan and never built.
+2. **Pre-fork pit-stop swings dominated the y-scale.** VER's real lap-25
+   stop puts his gap at ~18s, so the axis spanned 0-30 and the actual
+   post-fork effect was an imperceptible sliver at the top. Both fixed by
+   the same change: focus mode now defaults to a lap window starting
+   `FOCUS_LEAD_IN_LAPS` before the fork, with a "whole race" toggle. Solving
+   the framing solved the scale.
+3. **The ink (real) line was invisible.** Pre-fork, the alternate timeline
+   *is* reality copied verbatim (spec 9.1 step 4), so oxide was drawn
+   exactly on top of ink and "real" appeared absent from its own chart. The
+   alternate is now drawn only from the divergence lap onward — one history
+   before the fork, two after, which is also just the truth of the model.
+
+Plus two smaller ones only visible by eye: the chart occupied ~55% of its
+container (MIN_LAP_WIDTH_PX was being used as a fixed size rather than a
+floor — now `max(minimum, available)` via ResizeObserver, with a graceful
+window-listener fallback since jsdom has no implementation), and axis labels
+collided (`44 45` overlapping at the left edge, `LAP` printed over `70`).
+
+**Recording this as a process note, not just a bug list**: the programmatic
+verification was not wrong, it was answering a different question — "is this
+wired correctly" rather than "does this work." Structural assertions cannot
+see a chart whose interesting region is scrolled out of frame. The same
+lesson as the noise-in-metric and clamp-detection-heuristic findings, in a
+new domain.
+
+**Four review points also resolved:**
+
+- *The 25% win fraction was stale.* It was measured at
+  `MIN_FOLLOWING_GAP_S = 0.3`; the floor is now 0.580. The fixture was in
+  fact already regenerated at the new floor and reports **20% (12/60)** —
+  the UI number was correct, the prose figure was not. Now guarded:
+  `meta.paramFingerprint` records the constants and fitted values used, and
+  `tests/test_fixture.py` asserts they match live code, so a refit that
+  invalidates the fixture fails a test rather than silently shipping a
+  number nobody re-derived. Same drift-guard pattern as the `AR1_PHI` and
+  `MIN_FOLLOWING_GAP_S` fitting scripts.
+- *The alternate line was an unlabelled median.* A per-lap median is not a
+  trajectory any seed produced, and it could visually contradict the
+  distribution panel beside it. Now: 14 real seed traces drawn faintly
+  behind it, and the legend says "median of 14+ runs" explicitly.
+- *Locked y-scale would magnify a constant.* Added `MIN_Y_EXTENT_S = 5`, so a
+  gap pinned at the model's own 0.58s floor renders as the small margin it
+  is rather than a chasm.
+- *3.02 contrast is passing, not legible.* Twenty hairlines at the floor do
+  read as spaghetti. Field mode now draws everything at 0.5 opacity by
+  default and raises a single driver to full weight on hover in the readout,
+  so the baseline is a quiet background and attention is directed.
+
+Verified after: no spurious scrollbar, 14 seed traces, 14 clamp ticks,
+alternate starting at the fork, clean tick labels, and mobile still holding
+14.5px/lap with in-container scroll and no page overflow. Frontend 5 tests,
+backend 170.

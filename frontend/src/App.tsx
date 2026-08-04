@@ -18,8 +18,16 @@ import fixture from "./fixtures/race.json";
 
 type Driver = { code: string; team: string; gridPosition: number };
 
+/**
+ * Laps of lead-in before the fork. Enough to see the approach without
+ * letting pre-fork pit-stop swings (which reach ~18s and are identical in
+ * both timelines) dominate the y-scale and squash the actual effect.
+ */
+const FOCUS_LEAD_IN_LAPS = 6;
+
 export default function App() {
   const [mode, setMode] = useState<"field" | "focus">("focus");
+  const [wholeRace, setWholeRace] = useState(false);
 
   const { teamByDriver, teammateIndex } = useMemo(() => {
     const byTeam: Record<string, string[]> = {};
@@ -39,6 +47,19 @@ export default function App() {
 
   const cf = fixture.counterfactual;
 
+  // Focus mode defaults to a window around the fork rather than the whole
+  // race. Two reasons, both found by actually looking at the rendered chart:
+  // the divergence sat off-screen to the right at default scroll, and
+  // pre-fork pit-stop swings (~18s, identical in both timelines) dominated
+  // the y-scale so the real sub-second effect was imperceptible.
+  const lapRange = useMemo<[number, number]>(
+    () =>
+      mode === "focus" && !wholeRace
+        ? [Math.max(1, cf.divergenceLap - FOCUS_LEAD_IN_LAPS), fixture.meta.totalLaps]
+        : [1, fixture.meta.totalLaps],
+    [mode, wholeRace, cf.divergenceLap],
+  );
+
   return (
     <main className="mx-auto min-h-screen max-w-[1100px] px-4 py-6 sm:px-6">
       {/* Session header, set like an official document header. */}
@@ -56,7 +77,7 @@ export default function App() {
 
       {/* Mode switch: field view vs focused comparison. Two genuinely
           different questions, so two modes rather than one crowded chart. */}
-      <div className="flex items-center gap-1 py-3">
+      <div className="flex flex-wrap items-center gap-x-1 gap-y-2 py-3">
         {(["focus", "field"] as const).map((m) => (
           <button
             key={m}
@@ -71,6 +92,15 @@ export default function App() {
             {m === "focus" ? "Comparison" : "Full field"}
           </button>
         ))}
+        {mode === "focus" && (
+          <button
+            onClick={() => setWholeRace((v) => !v)}
+            aria-pressed={wholeRace}
+            className="ml-3 border border-rule bg-paper px-2.5 py-1 font-sans text-micro uppercase tracking-[0.08em] text-ink/70 transition-colors hover:border-ink/50"
+          >
+            {wholeRace ? `Lap ${lapRange[0]}–${lapRange[1]}` : "Whole race"}
+          </button>
+        )}
       </div>
 
       <GapChart
@@ -81,8 +111,10 @@ export default function App() {
         mode={mode}
         focusDriver={cf.driver}
         alternateSeries={cf.series}
+        seedSeries={cf.seedSeries}
         divergenceLap={cf.divergenceLap}
         safetyCarPeriods={fixture.safetyCarPeriods}
+        lapRange={lapRange}
       />
 
       {mode === "focus" && (
