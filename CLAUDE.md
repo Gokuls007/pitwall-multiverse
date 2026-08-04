@@ -283,3 +283,26 @@ Phase 3 (validation) is a hard gate — no counterfactuals until replay reproduc
   validation question. Consider scoping early Phase 4 UI toward late-race
   decisions where drift is small, and lean on the Monte Carlo ensemble
   (spec 6.10) to present outcomes as distributions, not single points.
+
+- **Phase 4 (counterfactual engine, spec Part 9): IN PROGRESS.**
+  `counterfactual/` (`strategy.py`, `engine.py`) built for `ChangePitLap`
+  only; the other five `Decision` types are declared with working
+  `first_affected_lap` but `apply_decision` raises `NotImplementedError`
+  for them (disclosed scope, see DECISIONS.md). The no-op test was built
+  first, per instruction, and asserts against a horizon-scaled tolerance
+  (`~0.835 * sqrt(laps remaining)`, from the Phase 3 drift measurement)
+  rather than exact equality — a genuine no-op still resimulates pace from
+  the fitted model once it crosses the fork, so some drift is expected and
+  now quantified rather than assumed. Two real bugs found and fixed while
+  building it: `_apply_change_pit_lap` assumed the out-lap/tyre-reset
+  always lands at `original_lap + 1` (false on 2019 Hungary's Hamilton — a
+  genuine 2-lap real transition), and the affected-lap range for a shifted
+  stop was computed by stint index, which could silently overwrite a
+  later, unrelated real stop when stint index and `is_in_lap` don't align.
+  Both fixed by deriving structure from the real data directly rather than
+  assuming a fixed offset. 147 tests pass. `counterfactual/diff.py` (spec
+  9.3's structured diff) and the remaining five decision types are not yet
+  built. Demo: HAM's real lap-48 stop (2019 Hungary) moved to lap 44 —
+  chosen for the easier extrapolation direction (interpolation within
+  observed tyre ages) and a short drift horizon; gap-trace chart generated
+  and shown. Full derivation: DECISIONS.md's Phase 4 section.

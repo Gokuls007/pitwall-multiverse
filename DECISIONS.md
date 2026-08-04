@@ -2070,3 +2070,72 @@ asserted.
 Committed to `phase-3-simulator-validation-not-passing` (two commits:
 the initial build plus the corrected held-out check) and merged to
 `master`. Full test suite: 141 tests, all passing.
+
+## Phase 4 — Counterfactual engine (in progress)
+
+Started per spec Part 9. Scope this pass: `ChangePitLap` only — the other
+five `Decision` types (`ChangeCompound`, `AddPitStop`, `RemovePitStop`,
+`ShiftSafetyCar`, `RemoveSafetyCar`) are declared in `domain/decision.py`
+with working `first_affected_lap` properties, but `counterfactual/
+strategy.py`'s `apply_decision` raises `NotImplementedError` for them —
+disclosed scope, not a silent gap.
+
+**Built the no-op test first**, per explicit instruction: apply a decision
+equal to reality (`ChangePitLap(driver, lap, lap)`) and the counterfactual
+must reproduce reality, *within a horizon-appropriate tolerance* rather
+than exactly — because once the fork starts resimulating, even a genuine
+no-op is predicting pace from the fitted model rather than replaying real
+times, so some drift is expected and quantified (DECISIONS.md's Phase 3
+drift-horizon entry: adjacent-gap error grows as `~0.835 * sqrt(laps
+elapsed)`). Two tests, `tests/test_counterfactual.py`: a late fork (HAM's
+real lap-48 stop, 22 laps remaining) and an early fork (BOT's real lap-5
+stop, 65 laps remaining), each asserting median adjacent-gap drift stays
+under `5 * 0.835 * sqrt(laps_remaining)` (the 5x safety multiplier
+accounts for this being a single-race, single-seed test against a
+pooled-catalogue fit, not a flaky-test workaround). Both pass.
+
+**A second, independent no-op check** (`apply_decision`'s own output,
+before any simulation): a true no-op must reconstruct the exact real
+compound/tyre-age/in-out-lap sequence for every affected lap. Found and
+fixed two real bugs writing this:
+
+1. `_apply_change_pit_lap` assumed the out-lap and the tyre-age reset
+   always land on `original_lap + 1`. On 2019 Hungary's Hamilton, his real
+   second stop (lap 48) has a genuine 2-lap transition: lap 49 is flagged
+   an out-lap but still shows the *old* compound with tyre age continuing
+   17->18 uninterrupted, and the actual fresh-compound/tyre_life=1 lap
+   doesn't appear until lap 50. Fixed by deriving the transition width
+   from each stint's own real data (via the `stint` field) rather than
+   assuming a fixed +1 offset, and preserving that width when a stop is
+   shifted. A dedicated test
+   (`test_no_op_handles_a_multi_lap_pit_transition_without_crashing`)
+   checks compound/tyre-age reconstruction exactly for this case while
+   accepting that the *exact* lap `is_out_lap` lands on can differ by one
+   lap in this specific anomaly — the properties that actually drive the
+   pace model (compound, tyre age) are what's asserted, not every flag.
+2. The affected-lap range for a shifted stop was computed as "up to the
+   stint two indices ahead," which can land inside — and silently
+   overwrite — a *later, unrelated* real pit stop when stint index and
+   `is_in_lap` don't align 1:1 (the same anomaly as above). Fixed by
+   bounding the range using the real `is_in_lap` flag directly (the
+   driver's next actual stop after `original_lap`), not stint indexing.
+
+**Demo built**: HAM's real lap-48 stop (2019 Hungary) moved to lap 44 —
+an earlier stop late in the race, chosen deliberately for the easier
+extrapolation direction (interpolation within observed tyre ages, per the
+Phase 3 held-out finding) and a short drift horizon (26 laps remaining).
+Gap-trace chart (real, faded, vs. counterfactual, bold) generated and
+shown. Result for this specific case: HAM remains the winner in both
+worlds — a real answer, not a change of outcome, which is itself
+informative (a 4-lap pit shift doesn't flip a race he won by a wide
+margin).
+
+**Not done this pass, flagged for next**: the pit-loss-bias sanity check
+(compare a real undercut to the simulator's own verdict on it) was
+partially covered by the existing `strategy_direction_match_rate` metric
+(81.8-96.2% across the catalogue, already computed in VALIDATION.md) but
+not chased down to a single hand-verified example as asked. `counterfactual
+/diff.py` (the structured spec-9.3 diff: classification change, divergence
+lap, largest swing, winner change) is not yet built — `simulate_counterfactual`
+'s `SimulationResult` has everything needed to build it against, but the
+comparison/formatting layer itself doesn't exist yet.
