@@ -14733,6 +14733,2168 @@
         ]
       }
     ],
+    "candidates": [
+      {
+        "newLap": 1,
+        "isReal": false,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 69,
+        "newStintEndTyreAge": 72,
+        "beyondEvidenceLaps": 66,
+        "maxExcessLaps": 66,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 1,
+            "endLap": 1,
+            "startTyreAge": -24,
+            "endTyreAge": -24,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 2,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 72,
+            "extrapolatedLaps": 66,
+            "maxExcessLaps": 66,
+            "firstExtrapolatedLap": 5
+          }
+        ]
+      },
+      {
+        "newLap": 2,
+        "isReal": false,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 68,
+        "newStintEndTyreAge": 71,
+        "beyondEvidenceLaps": 65,
+        "maxExcessLaps": 65,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 2,
+            "endLap": 2,
+            "startTyreAge": -23,
+            "endTyreAge": -23,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 3,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 71,
+            "extrapolatedLaps": 65,
+            "maxExcessLaps": 65,
+            "firstExtrapolatedLap": 6
+          }
+        ]
+      },
+      {
+        "newLap": 3,
+        "isReal": false,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 67,
+        "newStintEndTyreAge": 70,
+        "beyondEvidenceLaps": 64,
+        "maxExcessLaps": 64,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 3,
+            "endLap": 3,
+            "startTyreAge": -22,
+            "endTyreAge": -22,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 4,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 70,
+            "extrapolatedLaps": 64,
+            "maxExcessLaps": 64,
+            "firstExtrapolatedLap": 7
+          }
+        ]
+      },
+      {
+        "newLap": 4,
+        "isReal": false,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 66,
+        "newStintEndTyreAge": 69,
+        "beyondEvidenceLaps": 63,
+        "maxExcessLaps": 63,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 4,
+            "endLap": 4,
+            "startTyreAge": -21,
+            "endTyreAge": -21,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 5,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 69,
+            "extrapolatedLaps": 63,
+            "maxExcessLaps": 63,
+            "firstExtrapolatedLap": 8
+          }
+        ]
+      },
+      {
+        "newLap": 5,
+        "isReal": false,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 65,
+        "newStintEndTyreAge": 68,
+        "beyondEvidenceLaps": 62,
+        "maxExcessLaps": 62,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 5,
+            "endLap": 5,
+            "startTyreAge": -20,
+            "endTyreAge": -20,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 6,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 68,
+            "extrapolatedLaps": 62,
+            "maxExcessLaps": 62,
+            "firstExtrapolatedLap": 9
+          }
+        ]
+      },
+      {
+        "newLap": 6,
+        "isReal": false,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 64,
+        "newStintEndTyreAge": 67,
+        "beyondEvidenceLaps": 61,
+        "maxExcessLaps": 61,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 6,
+            "endLap": 6,
+            "startTyreAge": -19,
+            "endTyreAge": -19,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 7,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 67,
+            "extrapolatedLaps": 61,
+            "maxExcessLaps": 61,
+            "firstExtrapolatedLap": 10
+          }
+        ]
+      },
+      {
+        "newLap": 7,
+        "isReal": false,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 63,
+        "newStintEndTyreAge": 66,
+        "beyondEvidenceLaps": 60,
+        "maxExcessLaps": 60,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 7,
+            "endLap": 7,
+            "startTyreAge": -18,
+            "endTyreAge": -18,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 8,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 66,
+            "extrapolatedLaps": 60,
+            "maxExcessLaps": 60,
+            "firstExtrapolatedLap": 11
+          }
+        ]
+      },
+      {
+        "newLap": 8,
+        "isReal": false,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 62,
+        "newStintEndTyreAge": 65,
+        "beyondEvidenceLaps": 59,
+        "maxExcessLaps": 59,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 8,
+            "endLap": 8,
+            "startTyreAge": -17,
+            "endTyreAge": -17,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 9,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 65,
+            "extrapolatedLaps": 59,
+            "maxExcessLaps": 59,
+            "firstExtrapolatedLap": 12
+          }
+        ]
+      },
+      {
+        "newLap": 9,
+        "isReal": false,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 61,
+        "newStintEndTyreAge": 64,
+        "beyondEvidenceLaps": 58,
+        "maxExcessLaps": 58,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 9,
+            "endLap": 9,
+            "startTyreAge": -16,
+            "endTyreAge": -16,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 10,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 64,
+            "extrapolatedLaps": 58,
+            "maxExcessLaps": 58,
+            "firstExtrapolatedLap": 13
+          }
+        ]
+      },
+      {
+        "newLap": 10,
+        "isReal": false,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 60,
+        "newStintEndTyreAge": 63,
+        "beyondEvidenceLaps": 57,
+        "maxExcessLaps": 57,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 10,
+            "endLap": 10,
+            "startTyreAge": -15,
+            "endTyreAge": -15,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 11,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 63,
+            "extrapolatedLaps": 57,
+            "maxExcessLaps": 57,
+            "firstExtrapolatedLap": 14
+          }
+        ]
+      },
+      {
+        "newLap": 11,
+        "isReal": false,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 59,
+        "newStintEndTyreAge": 62,
+        "beyondEvidenceLaps": 56,
+        "maxExcessLaps": 56,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 11,
+            "endLap": 11,
+            "startTyreAge": -14,
+            "endTyreAge": -14,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 12,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 62,
+            "extrapolatedLaps": 56,
+            "maxExcessLaps": 56,
+            "firstExtrapolatedLap": 15
+          }
+        ]
+      },
+      {
+        "newLap": 12,
+        "isReal": false,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 58,
+        "newStintEndTyreAge": 61,
+        "beyondEvidenceLaps": 55,
+        "maxExcessLaps": 55,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 12,
+            "endLap": 12,
+            "startTyreAge": -13,
+            "endTyreAge": -13,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 13,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 61,
+            "extrapolatedLaps": 55,
+            "maxExcessLaps": 55,
+            "firstExtrapolatedLap": 16
+          }
+        ]
+      },
+      {
+        "newLap": 13,
+        "isReal": false,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 57,
+        "newStintEndTyreAge": 60,
+        "beyondEvidenceLaps": 54,
+        "maxExcessLaps": 54,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 13,
+            "endLap": 13,
+            "startTyreAge": -12,
+            "endTyreAge": -12,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 14,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 60,
+            "extrapolatedLaps": 54,
+            "maxExcessLaps": 54,
+            "firstExtrapolatedLap": 17
+          }
+        ]
+      },
+      {
+        "newLap": 14,
+        "isReal": false,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 56,
+        "newStintEndTyreAge": 59,
+        "beyondEvidenceLaps": 53,
+        "maxExcessLaps": 53,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 14,
+            "endLap": 14,
+            "startTyreAge": -11,
+            "endTyreAge": -11,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 15,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 59,
+            "extrapolatedLaps": 53,
+            "maxExcessLaps": 53,
+            "firstExtrapolatedLap": 18
+          }
+        ]
+      },
+      {
+        "newLap": 15,
+        "isReal": false,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 55,
+        "newStintEndTyreAge": 58,
+        "beyondEvidenceLaps": 52,
+        "maxExcessLaps": 52,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 15,
+            "endLap": 15,
+            "startTyreAge": -10,
+            "endTyreAge": -10,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 16,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 58,
+            "extrapolatedLaps": 52,
+            "maxExcessLaps": 52,
+            "firstExtrapolatedLap": 19
+          }
+        ]
+      },
+      {
+        "newLap": 16,
+        "isReal": false,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 54,
+        "newStintEndTyreAge": 57,
+        "beyondEvidenceLaps": 51,
+        "maxExcessLaps": 51,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 16,
+            "endLap": 16,
+            "startTyreAge": -9,
+            "endTyreAge": -9,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 17,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 57,
+            "extrapolatedLaps": 51,
+            "maxExcessLaps": 51,
+            "firstExtrapolatedLap": 20
+          }
+        ]
+      },
+      {
+        "newLap": 17,
+        "isReal": false,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 53,
+        "newStintEndTyreAge": 56,
+        "beyondEvidenceLaps": 50,
+        "maxExcessLaps": 50,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 17,
+            "endLap": 17,
+            "startTyreAge": -8,
+            "endTyreAge": -8,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 18,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 56,
+            "extrapolatedLaps": 50,
+            "maxExcessLaps": 50,
+            "firstExtrapolatedLap": 21
+          }
+        ]
+      },
+      {
+        "newLap": 18,
+        "isReal": false,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 52,
+        "newStintEndTyreAge": 55,
+        "beyondEvidenceLaps": 49,
+        "maxExcessLaps": 49,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 18,
+            "endLap": 18,
+            "startTyreAge": -7,
+            "endTyreAge": -7,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 19,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 55,
+            "extrapolatedLaps": 49,
+            "maxExcessLaps": 49,
+            "firstExtrapolatedLap": 22
+          }
+        ]
+      },
+      {
+        "newLap": 19,
+        "isReal": false,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 51,
+        "newStintEndTyreAge": 54,
+        "beyondEvidenceLaps": 48,
+        "maxExcessLaps": 48,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 19,
+            "endLap": 19,
+            "startTyreAge": -6,
+            "endTyreAge": -6,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 20,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 54,
+            "extrapolatedLaps": 48,
+            "maxExcessLaps": 48,
+            "firstExtrapolatedLap": 23
+          }
+        ]
+      },
+      {
+        "newLap": 20,
+        "isReal": false,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 50,
+        "newStintEndTyreAge": 53,
+        "beyondEvidenceLaps": 47,
+        "maxExcessLaps": 47,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 20,
+            "endLap": 20,
+            "startTyreAge": -5,
+            "endTyreAge": -5,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 21,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 53,
+            "extrapolatedLaps": 47,
+            "maxExcessLaps": 47,
+            "firstExtrapolatedLap": 24
+          }
+        ]
+      },
+      {
+        "newLap": 21,
+        "isReal": false,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 49,
+        "newStintEndTyreAge": 52,
+        "beyondEvidenceLaps": 46,
+        "maxExcessLaps": 46,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 21,
+            "endLap": 21,
+            "startTyreAge": -4,
+            "endTyreAge": -4,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 22,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 52,
+            "extrapolatedLaps": 46,
+            "maxExcessLaps": 46,
+            "firstExtrapolatedLap": 25
+          }
+        ]
+      },
+      {
+        "newLap": 22,
+        "isReal": false,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 48,
+        "newStintEndTyreAge": 51,
+        "beyondEvidenceLaps": 45,
+        "maxExcessLaps": 45,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 22,
+            "endLap": 22,
+            "startTyreAge": -3,
+            "endTyreAge": -3,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 23,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 51,
+            "extrapolatedLaps": 45,
+            "maxExcessLaps": 45,
+            "firstExtrapolatedLap": 26
+          }
+        ]
+      },
+      {
+        "newLap": 23,
+        "isReal": false,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 47,
+        "newStintEndTyreAge": 50,
+        "beyondEvidenceLaps": 44,
+        "maxExcessLaps": 44,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 23,
+            "endLap": 23,
+            "startTyreAge": -2,
+            "endTyreAge": -2,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 24,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 50,
+            "extrapolatedLaps": 44,
+            "maxExcessLaps": 44,
+            "firstExtrapolatedLap": 27
+          }
+        ]
+      },
+      {
+        "newLap": 24,
+        "isReal": false,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 46,
+        "newStintEndTyreAge": 49,
+        "beyondEvidenceLaps": 43,
+        "maxExcessLaps": 43,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 24,
+            "endLap": 24,
+            "startTyreAge": -1,
+            "endTyreAge": -1,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 25,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 49,
+            "extrapolatedLaps": 43,
+            "maxExcessLaps": 43,
+            "firstExtrapolatedLap": 28
+          }
+        ]
+      },
+      {
+        "newLap": 25,
+        "isReal": false,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 45,
+        "newStintEndTyreAge": 48,
+        "beyondEvidenceLaps": 42,
+        "maxExcessLaps": 42,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 25,
+            "endLap": 25,
+            "startTyreAge": 0,
+            "endTyreAge": 0,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 26,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 48,
+            "extrapolatedLaps": 42,
+            "maxExcessLaps": 42,
+            "firstExtrapolatedLap": 29
+          }
+        ]
+      },
+      {
+        "newLap": 26,
+        "isReal": false,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 44,
+        "newStintEndTyreAge": 47,
+        "beyondEvidenceLaps": 41,
+        "maxExcessLaps": 41,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 26,
+            "endLap": 26,
+            "startTyreAge": 1,
+            "endTyreAge": 1,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 27,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 47,
+            "extrapolatedLaps": 41,
+            "maxExcessLaps": 41,
+            "firstExtrapolatedLap": 30
+          }
+        ]
+      },
+      {
+        "newLap": 27,
+        "isReal": false,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 43,
+        "newStintEndTyreAge": 46,
+        "beyondEvidenceLaps": 40,
+        "maxExcessLaps": 40,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 27,
+            "endLap": 27,
+            "startTyreAge": 2,
+            "endTyreAge": 2,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 28,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 46,
+            "extrapolatedLaps": 40,
+            "maxExcessLaps": 40,
+            "firstExtrapolatedLap": 31
+          }
+        ]
+      },
+      {
+        "newLap": 28,
+        "isReal": false,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 42,
+        "newStintEndTyreAge": 45,
+        "beyondEvidenceLaps": 39,
+        "maxExcessLaps": 39,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 28,
+            "endLap": 28,
+            "startTyreAge": 3,
+            "endTyreAge": 3,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 29,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 45,
+            "extrapolatedLaps": 39,
+            "maxExcessLaps": 39,
+            "firstExtrapolatedLap": 32
+          }
+        ]
+      },
+      {
+        "newLap": 29,
+        "isReal": false,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 41,
+        "newStintEndTyreAge": 44,
+        "beyondEvidenceLaps": 38,
+        "maxExcessLaps": 38,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 29,
+            "endLap": 29,
+            "startTyreAge": 4,
+            "endTyreAge": 4,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 30,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 44,
+            "extrapolatedLaps": 38,
+            "maxExcessLaps": 38,
+            "firstExtrapolatedLap": 33
+          }
+        ]
+      },
+      {
+        "newLap": 30,
+        "isReal": false,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 40,
+        "newStintEndTyreAge": 43,
+        "beyondEvidenceLaps": 37,
+        "maxExcessLaps": 37,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 30,
+            "endLap": 30,
+            "startTyreAge": 5,
+            "endTyreAge": 5,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 31,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 43,
+            "extrapolatedLaps": 37,
+            "maxExcessLaps": 37,
+            "firstExtrapolatedLap": 34
+          }
+        ]
+      },
+      {
+        "newLap": 31,
+        "isReal": false,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 39,
+        "newStintEndTyreAge": 42,
+        "beyondEvidenceLaps": 36,
+        "maxExcessLaps": 36,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 31,
+            "endLap": 31,
+            "startTyreAge": 6,
+            "endTyreAge": 6,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 32,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 42,
+            "extrapolatedLaps": 36,
+            "maxExcessLaps": 36,
+            "firstExtrapolatedLap": 35
+          }
+        ]
+      },
+      {
+        "newLap": 32,
+        "isReal": false,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 38,
+        "newStintEndTyreAge": 41,
+        "beyondEvidenceLaps": 35,
+        "maxExcessLaps": 35,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 32,
+            "endLap": 32,
+            "startTyreAge": 7,
+            "endTyreAge": 7,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 33,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 41,
+            "extrapolatedLaps": 35,
+            "maxExcessLaps": 35,
+            "firstExtrapolatedLap": 36
+          }
+        ]
+      },
+      {
+        "newLap": 33,
+        "isReal": false,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 37,
+        "newStintEndTyreAge": 40,
+        "beyondEvidenceLaps": 34,
+        "maxExcessLaps": 34,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 33,
+            "endLap": 33,
+            "startTyreAge": 8,
+            "endTyreAge": 8,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 34,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 40,
+            "extrapolatedLaps": 34,
+            "maxExcessLaps": 34,
+            "firstExtrapolatedLap": 37
+          }
+        ]
+      },
+      {
+        "newLap": 34,
+        "isReal": false,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 36,
+        "newStintEndTyreAge": 39,
+        "beyondEvidenceLaps": 33,
+        "maxExcessLaps": 33,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 34,
+            "endLap": 34,
+            "startTyreAge": 9,
+            "endTyreAge": 9,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 35,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 39,
+            "extrapolatedLaps": 33,
+            "maxExcessLaps": 33,
+            "firstExtrapolatedLap": 38
+          }
+        ]
+      },
+      {
+        "newLap": 35,
+        "isReal": false,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 35,
+        "newStintEndTyreAge": 38,
+        "beyondEvidenceLaps": 32,
+        "maxExcessLaps": 32,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 35,
+            "endLap": 35,
+            "startTyreAge": 10,
+            "endTyreAge": 10,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 36,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 38,
+            "extrapolatedLaps": 32,
+            "maxExcessLaps": 32,
+            "firstExtrapolatedLap": 39
+          }
+        ]
+      },
+      {
+        "newLap": 36,
+        "isReal": false,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 34,
+        "newStintEndTyreAge": 37,
+        "beyondEvidenceLaps": 31,
+        "maxExcessLaps": 31,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 36,
+            "endLap": 36,
+            "startTyreAge": 11,
+            "endTyreAge": 11,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 37,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 37,
+            "extrapolatedLaps": 31,
+            "maxExcessLaps": 31,
+            "firstExtrapolatedLap": 40
+          }
+        ]
+      },
+      {
+        "newLap": 37,
+        "isReal": false,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 33,
+        "newStintEndTyreAge": 36,
+        "beyondEvidenceLaps": 30,
+        "maxExcessLaps": 30,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 37,
+            "endLap": 37,
+            "startTyreAge": 12,
+            "endTyreAge": 12,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 38,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 36,
+            "extrapolatedLaps": 30,
+            "maxExcessLaps": 30,
+            "firstExtrapolatedLap": 41
+          }
+        ]
+      },
+      {
+        "newLap": 38,
+        "isReal": false,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 32,
+        "newStintEndTyreAge": 35,
+        "beyondEvidenceLaps": 29,
+        "maxExcessLaps": 29,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 38,
+            "endLap": 38,
+            "startTyreAge": 13,
+            "endTyreAge": 13,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 39,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 35,
+            "extrapolatedLaps": 29,
+            "maxExcessLaps": 29,
+            "firstExtrapolatedLap": 42
+          }
+        ]
+      },
+      {
+        "newLap": 39,
+        "isReal": false,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 31,
+        "newStintEndTyreAge": 34,
+        "beyondEvidenceLaps": 28,
+        "maxExcessLaps": 28,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 39,
+            "endLap": 39,
+            "startTyreAge": 14,
+            "endTyreAge": 14,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 40,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 34,
+            "extrapolatedLaps": 28,
+            "maxExcessLaps": 28,
+            "firstExtrapolatedLap": 43
+          }
+        ]
+      },
+      {
+        "newLap": 40,
+        "isReal": false,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 30,
+        "newStintEndTyreAge": 33,
+        "beyondEvidenceLaps": 27,
+        "maxExcessLaps": 27,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 40,
+            "endLap": 40,
+            "startTyreAge": 15,
+            "endTyreAge": 15,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 41,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 33,
+            "extrapolatedLaps": 27,
+            "maxExcessLaps": 27,
+            "firstExtrapolatedLap": 44
+          }
+        ]
+      },
+      {
+        "newLap": 41,
+        "isReal": false,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 29,
+        "newStintEndTyreAge": 32,
+        "beyondEvidenceLaps": 26,
+        "maxExcessLaps": 26,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 41,
+            "endLap": 41,
+            "startTyreAge": 16,
+            "endTyreAge": 16,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 42,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 32,
+            "extrapolatedLaps": 26,
+            "maxExcessLaps": 26,
+            "firstExtrapolatedLap": 45
+          }
+        ]
+      },
+      {
+        "newLap": 42,
+        "isReal": false,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 28,
+        "newStintEndTyreAge": 31,
+        "beyondEvidenceLaps": 25,
+        "maxExcessLaps": 25,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 42,
+            "endLap": 42,
+            "startTyreAge": 17,
+            "endTyreAge": 17,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 43,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 31,
+            "extrapolatedLaps": 25,
+            "maxExcessLaps": 25,
+            "firstExtrapolatedLap": 46
+          }
+        ]
+      },
+      {
+        "newLap": 43,
+        "isReal": false,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 27,
+        "newStintEndTyreAge": 30,
+        "beyondEvidenceLaps": 24,
+        "maxExcessLaps": 24,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 43,
+            "endLap": 43,
+            "startTyreAge": 18,
+            "endTyreAge": 18,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 44,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 30,
+            "extrapolatedLaps": 24,
+            "maxExcessLaps": 24,
+            "firstExtrapolatedLap": 47
+          }
+        ]
+      },
+      {
+        "newLap": 44,
+        "isReal": false,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 26,
+        "newStintEndTyreAge": 29,
+        "beyondEvidenceLaps": 23,
+        "maxExcessLaps": 23,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 44,
+            "endLap": 44,
+            "startTyreAge": 19,
+            "endTyreAge": 19,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 45,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 29,
+            "extrapolatedLaps": 23,
+            "maxExcessLaps": 23,
+            "firstExtrapolatedLap": 48
+          }
+        ]
+      },
+      {
+        "newLap": 45,
+        "isReal": false,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 25,
+        "newStintEndTyreAge": 28,
+        "beyondEvidenceLaps": 22,
+        "maxExcessLaps": 22,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 45,
+            "endLap": 45,
+            "startTyreAge": 20,
+            "endTyreAge": 20,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 46,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 28,
+            "extrapolatedLaps": 22,
+            "maxExcessLaps": 22,
+            "firstExtrapolatedLap": 49
+          }
+        ]
+      },
+      {
+        "newLap": 46,
+        "isReal": false,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 24,
+        "newStintEndTyreAge": 27,
+        "beyondEvidenceLaps": 21,
+        "maxExcessLaps": 21,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 46,
+            "endLap": 46,
+            "startTyreAge": 21,
+            "endTyreAge": 21,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 47,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 27,
+            "extrapolatedLaps": 21,
+            "maxExcessLaps": 21,
+            "firstExtrapolatedLap": 50
+          }
+        ]
+      },
+      {
+        "newLap": 47,
+        "isReal": false,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 23,
+        "newStintEndTyreAge": 26,
+        "beyondEvidenceLaps": 20,
+        "maxExcessLaps": 20,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 47,
+            "endLap": 47,
+            "startTyreAge": 22,
+            "endTyreAge": 22,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 48,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 26,
+            "extrapolatedLaps": 20,
+            "maxExcessLaps": 20,
+            "firstExtrapolatedLap": 51
+          }
+        ]
+      },
+      {
+        "newLap": 48,
+        "isReal": false,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 22,
+        "newStintEndTyreAge": 25,
+        "beyondEvidenceLaps": 19,
+        "maxExcessLaps": 19,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 48,
+            "endLap": 48,
+            "startTyreAge": 23,
+            "endTyreAge": 23,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 49,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 25,
+            "extrapolatedLaps": 19,
+            "maxExcessLaps": 19,
+            "firstExtrapolatedLap": 52
+          }
+        ]
+      },
+      {
+        "newLap": 49,
+        "isReal": false,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 21,
+        "newStintEndTyreAge": 24,
+        "beyondEvidenceLaps": 18,
+        "maxExcessLaps": 18,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 49,
+            "endLap": 49,
+            "startTyreAge": 24,
+            "endTyreAge": 24,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 50,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 24,
+            "extrapolatedLaps": 18,
+            "maxExcessLaps": 18,
+            "firstExtrapolatedLap": 53
+          }
+        ]
+      },
+      {
+        "newLap": 50,
+        "isReal": false,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 20,
+        "newStintEndTyreAge": 23,
+        "beyondEvidenceLaps": 17,
+        "maxExcessLaps": 17,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 50,
+            "endLap": 50,
+            "startTyreAge": 25,
+            "endTyreAge": 25,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 51,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 23,
+            "extrapolatedLaps": 17,
+            "maxExcessLaps": 17,
+            "firstExtrapolatedLap": 54
+          }
+        ]
+      },
+      {
+        "newLap": 51,
+        "isReal": false,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 19,
+        "newStintEndTyreAge": 22,
+        "beyondEvidenceLaps": 16,
+        "maxExcessLaps": 16,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 51,
+            "endLap": 51,
+            "startTyreAge": 26,
+            "endTyreAge": 26,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 52,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 22,
+            "extrapolatedLaps": 16,
+            "maxExcessLaps": 16,
+            "firstExtrapolatedLap": 55
+          }
+        ]
+      },
+      {
+        "newLap": 52,
+        "isReal": false,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 18,
+        "newStintEndTyreAge": 21,
+        "beyondEvidenceLaps": 15,
+        "maxExcessLaps": 15,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 52,
+            "endLap": 52,
+            "startTyreAge": 27,
+            "endTyreAge": 27,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 53,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 21,
+            "extrapolatedLaps": 15,
+            "maxExcessLaps": 15,
+            "firstExtrapolatedLap": 56
+          }
+        ]
+      },
+      {
+        "newLap": 53,
+        "isReal": false,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 17,
+        "newStintEndTyreAge": 20,
+        "beyondEvidenceLaps": 14,
+        "maxExcessLaps": 14,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 53,
+            "endLap": 53,
+            "startTyreAge": 28,
+            "endTyreAge": 28,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 54,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 20,
+            "extrapolatedLaps": 14,
+            "maxExcessLaps": 14,
+            "firstExtrapolatedLap": 57
+          }
+        ]
+      },
+      {
+        "newLap": 54,
+        "isReal": false,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 16,
+        "newStintEndTyreAge": 19,
+        "beyondEvidenceLaps": 13,
+        "maxExcessLaps": 13,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 54,
+            "endLap": 54,
+            "startTyreAge": 29,
+            "endTyreAge": 29,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 55,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 19,
+            "extrapolatedLaps": 13,
+            "maxExcessLaps": 13,
+            "firstExtrapolatedLap": 58
+          }
+        ]
+      },
+      {
+        "newLap": 55,
+        "isReal": false,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 15,
+        "newStintEndTyreAge": 18,
+        "beyondEvidenceLaps": 12,
+        "maxExcessLaps": 12,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 55,
+            "endLap": 55,
+            "startTyreAge": 30,
+            "endTyreAge": 30,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 56,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 18,
+            "extrapolatedLaps": 12,
+            "maxExcessLaps": 12,
+            "firstExtrapolatedLap": 59
+          }
+        ]
+      },
+      {
+        "newLap": 56,
+        "isReal": false,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 14,
+        "newStintEndTyreAge": 17,
+        "beyondEvidenceLaps": 11,
+        "maxExcessLaps": 11,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 56,
+            "endLap": 56,
+            "startTyreAge": 31,
+            "endTyreAge": 31,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 57,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 17,
+            "extrapolatedLaps": 11,
+            "maxExcessLaps": 11,
+            "firstExtrapolatedLap": 60
+          }
+        ]
+      },
+      {
+        "newLap": 57,
+        "isReal": false,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 13,
+        "newStintEndTyreAge": 16,
+        "beyondEvidenceLaps": 10,
+        "maxExcessLaps": 10,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 57,
+            "endLap": 57,
+            "startTyreAge": 32,
+            "endTyreAge": 32,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 58,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 16,
+            "extrapolatedLaps": 10,
+            "maxExcessLaps": 10,
+            "firstExtrapolatedLap": 61
+          }
+        ]
+      },
+      {
+        "newLap": 58,
+        "isReal": false,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 12,
+        "newStintEndTyreAge": 15,
+        "beyondEvidenceLaps": 9,
+        "maxExcessLaps": 9,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 58,
+            "endLap": 58,
+            "startTyreAge": 33,
+            "endTyreAge": 33,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 59,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 15,
+            "extrapolatedLaps": 9,
+            "maxExcessLaps": 9,
+            "firstExtrapolatedLap": 62
+          }
+        ]
+      },
+      {
+        "newLap": 59,
+        "isReal": false,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 11,
+        "newStintEndTyreAge": 14,
+        "beyondEvidenceLaps": 8,
+        "maxExcessLaps": 8,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 59,
+            "endLap": 59,
+            "startTyreAge": 34,
+            "endTyreAge": 34,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 60,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 14,
+            "extrapolatedLaps": 8,
+            "maxExcessLaps": 8,
+            "firstExtrapolatedLap": 63
+          }
+        ]
+      },
+      {
+        "newLap": 60,
+        "isReal": false,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 10,
+        "newStintEndTyreAge": 13,
+        "beyondEvidenceLaps": 7,
+        "maxExcessLaps": 7,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 60,
+            "endLap": 60,
+            "startTyreAge": 35,
+            "endTyreAge": 35,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 61,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 13,
+            "extrapolatedLaps": 7,
+            "maxExcessLaps": 7,
+            "firstExtrapolatedLap": 64
+          }
+        ]
+      },
+      {
+        "newLap": 61,
+        "isReal": false,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 9,
+        "newStintEndTyreAge": 12,
+        "beyondEvidenceLaps": 6,
+        "maxExcessLaps": 6,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 61,
+            "endLap": 61,
+            "startTyreAge": 36,
+            "endTyreAge": 36,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 62,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 12,
+            "extrapolatedLaps": 6,
+            "maxExcessLaps": 6,
+            "firstExtrapolatedLap": 65
+          }
+        ]
+      },
+      {
+        "newLap": 62,
+        "isReal": false,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 8,
+        "newStintEndTyreAge": 11,
+        "beyondEvidenceLaps": 5,
+        "maxExcessLaps": 5,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 62,
+            "endLap": 62,
+            "startTyreAge": 37,
+            "endTyreAge": 37,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 63,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 11,
+            "extrapolatedLaps": 5,
+            "maxExcessLaps": 5,
+            "firstExtrapolatedLap": 66
+          }
+        ]
+      },
+      {
+        "newLap": 63,
+        "isReal": false,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 7,
+        "newStintEndTyreAge": 10,
+        "beyondEvidenceLaps": 4,
+        "maxExcessLaps": 4,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 63,
+            "endLap": 63,
+            "startTyreAge": 38,
+            "endTyreAge": 38,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 64,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 10,
+            "extrapolatedLaps": 4,
+            "maxExcessLaps": 4,
+            "firstExtrapolatedLap": 67
+          }
+        ]
+      },
+      {
+        "newLap": 64,
+        "isReal": false,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 6,
+        "newStintEndTyreAge": 9,
+        "beyondEvidenceLaps": 3,
+        "maxExcessLaps": 3,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 64,
+            "endLap": 64,
+            "startTyreAge": 39,
+            "endTyreAge": 39,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 65,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 9,
+            "extrapolatedLaps": 3,
+            "maxExcessLaps": 3,
+            "firstExtrapolatedLap": 68
+          }
+        ]
+      },
+      {
+        "newLap": 65,
+        "isReal": false,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 5,
+        "newStintEndTyreAge": 8,
+        "beyondEvidenceLaps": 2,
+        "maxExcessLaps": 2,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 65,
+            "endLap": 65,
+            "startTyreAge": 40,
+            "endTyreAge": 40,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 66,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 8,
+            "extrapolatedLaps": 2,
+            "maxExcessLaps": 2,
+            "firstExtrapolatedLap": 69
+          }
+        ]
+      },
+      {
+        "newLap": 66,
+        "isReal": false,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 4,
+        "newStintEndTyreAge": 7,
+        "beyondEvidenceLaps": 1,
+        "maxExcessLaps": 1,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 66,
+            "endLap": 66,
+            "startTyreAge": 41,
+            "endTyreAge": 41,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 67,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 7,
+            "extrapolatedLaps": 1,
+            "maxExcessLaps": 1,
+            "firstExtrapolatedLap": 70
+          }
+        ]
+      },
+      {
+        "newLap": 67,
+        "isReal": true,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 3,
+        "newStintEndTyreAge": 6,
+        "beyondEvidenceLaps": 0,
+        "maxExcessLaps": 0,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 67,
+            "endLap": 67,
+            "startTyreAge": 42,
+            "endTyreAge": 42,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 68,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 6,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          }
+        ]
+      },
+      {
+        "newLap": 68,
+        "isReal": false,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 2,
+        "newStintEndTyreAge": 5,
+        "beyondEvidenceLaps": 1,
+        "maxExcessLaps": 1,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 67,
+            "endLap": 68,
+            "startTyreAge": 42,
+            "endTyreAge": 43,
+            "extrapolatedLaps": 1,
+            "maxExcessLaps": 1,
+            "firstExtrapolatedLap": 68
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 69,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 5,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          }
+        ]
+      },
+      {
+        "newLap": 69,
+        "isReal": false,
+        "newStintCompound": "SOFT",
+        "newStintLaps": 1,
+        "newStintEndTyreAge": 4,
+        "beyondEvidenceLaps": 2,
+        "maxExcessLaps": 2,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 67,
+            "endLap": 69,
+            "startTyreAge": 42,
+            "endTyreAge": 44,
+            "extrapolatedLaps": 2,
+            "maxExcessLaps": 2,
+            "firstExtrapolatedLap": 68
+          },
+          {
+            "compound": "SOFT",
+            "startLap": 70,
+            "endLap": 70,
+            "startTyreAge": 4,
+            "endTyreAge": 4,
+            "extrapolatedLaps": 0,
+            "maxExcessLaps": 0,
+            "firstExtrapolatedLap": null
+          }
+        ]
+      },
+      {
+        "newLap": 70,
+        "isReal": false,
+        "newStintCompound": "HARD",
+        "newStintLaps": 4,
+        "newStintEndTyreAge": 45,
+        "beyondEvidenceLaps": 3,
+        "maxExcessLaps": 3,
+        "stints": [
+          {
+            "compound": "HARD",
+            "startLap": 67,
+            "endLap": 70,
+            "startTyreAge": 42,
+            "endTyreAge": 45,
+            "extrapolatedLaps": 3,
+            "maxExcessLaps": 3,
+            "firstExtrapolatedLap": 68
+          }
+        ]
+      }
+    ],
     "focusStrategy": {
       "real": [
         {

@@ -13,6 +13,7 @@
  */
 
 import { useMemo, useState } from "react";
+import DecisionPanel from "./components/DecisionPanel";
 import GapChart from "./components/GapChart";
 import LapAxisPanes from "./components/LapAxisPanes";
 import StrategyTimeline, { type StintRun } from "./components/StrategyTimeline";
@@ -50,6 +51,20 @@ export default function App() {
 
   const cf = fixture.counterfactual;
 
+  /**
+   * The pit lap the panel is previewing. Starts at the committed decision —
+   * the one the simulated ensemble was actually run for. Moving it updates
+   * the strategy row and extrapolation reading live (both come from the real
+   * `apply_decision` path, precomputed per candidate) while the chart and
+   * outcome distribution stay labelled as the committed run, since a new
+   * ensemble needs the API.
+   */
+  const [previewLap, setPreviewLap] = useState<number>(cf.divergenceLap);
+  const previewCandidate = useMemo(
+    () => cf.candidates.find((c) => c.newLap === previewLap) ?? null,
+    [previewLap],
+  );
+
   // Focus mode defaults to a window around the fork rather than the whole
   // race. Two reasons, both found by actually looking at the rendered chart:
   // the divergence sat off-screen to the right at default scroll, and
@@ -66,9 +81,15 @@ export default function App() {
       // Short labels: the gutter is shared with the y-axis numerals and is
       // only as wide as those need, and the driver is already named in the
       // chart caption directly above.
+      //
+      // The alternate row follows the *previewed* lap, not the committed one,
+      // so moving the slider shows the strategy consequence immediately. The
+      // stints come from the precomputed candidate table (real code path), not
+      // from client-side arithmetic.
+      const previewStints = (previewCandidate?.stints ?? fs.alternate) as StintRun[];
       return [
         { label: "real", stints: fs.real as StintRun[] },
-        { label: "alt", stints: fs.alternate as StintRun[], isAlternate: true },
+        { label: "alt", stints: previewStints, isAlternate: true },
       ];
     }
     // Field mode: real stints for every driver, ordered by finishing position.
@@ -94,16 +115,16 @@ export default function App() {
       .sort((a, b) => (a.gridPosition ?? 99) - (b.gridPosition ?? 99))
       .filter((d) => byDriver.has(d.code))
       .map((d) => ({ label: d.code, stints: byDriver.get(d.code)! }));
-  }, [mode]);
+  }, [mode, previewCandidate]);
 
-  /** The alternate stint that runs furthest past this driver's observed data. */
+  /** The previewed stint running furthest past this driver's observed data. */
   const beyondEvidence = useMemo(() => {
-    const runs = cf.focusStrategy.alternate as StintRun[];
+    const runs = (previewCandidate?.stints ?? cf.focusStrategy.alternate) as StintRun[];
     const worst = runs
       .filter((r) => r.extrapolatedLaps > 0)
       .sort((a, b) => b.maxExcessLaps - a.maxExcessLaps)[0];
     return worst ?? null;
-  }, []);
+  }, [previewCandidate]);
 
   const lapRange = useMemo<[number, number]>(
     () =>
@@ -198,6 +219,18 @@ export default function App() {
           {(cf.focusStrategy.observedMaxTyreAge as Record<string, number>)[beyondEvidence.compound]} laps, this stint
           reaches {beyondEvidence.endTyreAge}) — extrapolation, not interpolation.
         </p>
+      )}
+
+      {mode === "focus" && (
+        <DecisionPanel
+          driver={cf.driver}
+          originalLap={cf.candidates.find((c) => c.isReal)?.newLap ?? cf.divergenceLap}
+          committedLap={cf.divergenceLap}
+          previewLap={previewLap}
+          onPreviewLap={setPreviewLap}
+          candidates={cf.candidates}
+          observedMaxTyreAge={cf.focusStrategy.observedMaxTyreAge as Record<string, number>}
+        />
       )}
 
       {mode === "focus" && (
