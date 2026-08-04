@@ -109,3 +109,13 @@ docker-compose up
 
 See `DECISIONS.md` for the running log. Phases are gated (Part 12 of the spec);
 Phase 3 (validation) is a hard gate — no counterfactuals until replay reproduces reality.
+
+- **Phase 0 (scaffold): done.**
+- **Phase 1 (data layer): done.** `ingestion/` (cache, loader, cleaning,
+  safety_car, catalogue) implemented; 5-race catalogue curated and each race's
+  driver counts, finishing order, and DNFs verified against FastF1's own
+  `session.results`. Abu Dhabi 2021's SC (L53-57) and VSC (L36-37) periods
+  verified against `race_control_messages`. Run `python
+  backend/scripts/prefetch_races.py` to (re)warm the cache and print the
+  cleaning report for every race.
+- Phase 2 (parameter fitting): not started.
