@@ -2753,3 +2753,42 @@ Verified after: no spurious scrollbar, 14 seed traces, 14 clamp ticks,
 alternate starting at the fork, clean tick labels, and mobile still holding
 14.5px/lap with in-container scroll and no page overflow. Frontend 5 tests,
 backend 170.
+
+### 2026-08-04 — The fork's rendering, and why the anchor is structural not cosmetic
+
+Checked the single most important point on the chart: where the alternate
+line originates. In this case there is no seam — VER's real and alternate
+gaps are both 0.0 at lap 50, because he leads in both timelines there. But
+that is **luck, not structure**: the fork lap can legitimately hold different
+values in the two timelines (it's the in-lap under the decision), and if it
+does, an oxide stroke starting there begins disconnected from the history it
+branches from.
+
+Fixed structurally rather than relying on the happy case: the alternate path
+is now anchored at `divergenceLap - 1`, a lap that genuinely belongs to
+*both* timelines (pre-fork laps are reality copied verbatim, spec 9.1 step
+4). So including it is truthful and guarantees visual continuity in every
+case, not just this one. Added a branch node at the anchor — paper-filled
+with an ink stroke, so it reads as a junction on the shared line rather than
+a data point belonging to either timeline.
+
+Also added `GapChart.test.tsx` pinning five properties, with the reasoning
+recorded in the file: **every one of the three faults found by looking was a
+property nobody had thought to name.** That isn't a coverage gap that better
+discipline would have closed — it's the standing argument for looking. But
+once a property *is* named, it should be a test rather than something the
+next reviewer has to re-notice. Pinned: the branch anchors at the last shared
+lap, a branch node exists, the alternate isn't drawn pre-fork, the y-extent
+floor holds against a small constant gap, and held-up laps render as discrete
+ticks rather than widening the pace band.
+
+**Extending the fingerprint pattern** (noted as the best artifact of this
+pass, since every stale-number incident in this project has had the same
+shape — a value derived under one parameter set and quoted after the
+parameters moved): `meta.paramFingerprint` plus `tests/test_fixture.py`
+now makes that structurally impossible for the fixture. The same treatment
+is still owed to the drift-horizon constant, the extrapolation-lap figures,
+and VALIDATION.md's own numbers. Recorded as the next guard to build, not
+as done.
+
+Frontend 10 tests, backend 170.

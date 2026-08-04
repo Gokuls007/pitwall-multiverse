@@ -161,17 +161,25 @@ export default function GapChart({
       : "";
   };
 
-  // The alternate timeline is drawn ONLY from the divergence lap onward.
+  // The alternate timeline is drawn from the last *shared* lap onward.
   // Before the fork it is reality copied verbatim (spec 9.1 step 4), so
-  // drawing it there is both redundant and actively misleading: the oxide
-  // line sits exactly on top of the ink one and "real" appears to be
-  // missing from its own chart. One history before the fork, two after.
+  // drawing all of it is redundant and actively misleading — the oxide line
+  // sits exactly on top of the ink one and "real" appears missing from its
+  // own chart. But starting at the divergence lap itself would leave the
+  // oxide stroke floating, disconnected from the history it branches from,
+  // whenever the two values differ at that lap (they only coincide here
+  // because VER leads in both timelines — luck, not structure).
+  //
+  // So the path is anchored one lap earlier: `divergenceLap - 1` genuinely
+  // belongs to BOTH timelines, so including it is truthful and guarantees
+  // the branch visibly originates from the shared line in every case.
+  const branchAnchorLap = divergenceLap != null ? divergenceLap - 1 : null;
   const alternateInRange = useMemo(
     () =>
       (alternateSeries ?? []).filter(
-        (p) => inRange(p.lap) && (divergenceLap == null || p.lap >= divergenceLap),
+        (p) => inRange(p.lap) && (branchAnchorLap == null || p.lap >= branchAnchorLap),
       ),
-    [alternateSeries, firstLap, lastLap, divergenceLap],
+    [alternateSeries, firstLap, lastLap, branchAnchorLap],
   );
 
   const yTicks = useMemo(() => {
@@ -354,6 +362,24 @@ export default function GapChart({
                 only from the fork onward. */}
             {mode === "focus" && alternateInRange.length > 0 && (
               <path d={path(alternateInRange)} fill="none" stroke="#A33A2E" strokeWidth={1.75} />
+            )}
+
+            {/* Branch node at the fork. Without it the two strokes read as a
+                break in one line rather than one history splitting into two —
+                and this is the single most important point on the chart. Drawn
+                in paper-filled ink so it reads as a junction on the shared
+                line, not as a data point belonging to either timeline. */}
+            {mode === "focus" && branchAnchorLap != null && inRange(branchAnchorLap) && (
+              <circle
+                cx={x(branchAnchorLap)}
+                cy={y(
+                  (realSeries[focusDriver ?? ""] ?? []).find((p) => p.lap === branchAnchorLap)?.gap ?? 0,
+                )}
+                r={3}
+                fill="#F4F1EA"
+                stroke="#1A1917"
+                strokeWidth={1.25}
+              />
             )}
 
             {/* Held-up ticks: traffic as a discrete EVENT, not diffused into
