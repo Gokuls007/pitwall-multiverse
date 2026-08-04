@@ -46,7 +46,7 @@ def _load(year: int, event_identifier: str):
 # product itself.
 EXPECTED = {
     "2019_mexican": (71, ["HAM", "VET", "BOT", "LEC", "ALB"], []),
-    "2019_singapore": (61, ["VET", "LEC", "VER", "HAM", "BOT"], []),
+    "2019_japanese": (53, ["BOT", "VET", "HAM", "ALB", "SAI"], []),
     "2019_monaco": (78, ["HAM", "VET", "BOT", "VER", "GAS"], []),
     "2019_hungarian": (70, ["HAM", "VER", "VET", "LEC", "SAI"], []),
     "2021_spanish": (66, ["HAM", "VER", "BOT", "LEC", "PER"], []),

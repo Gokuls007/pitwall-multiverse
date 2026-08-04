@@ -83,19 +83,22 @@ CATALOGUE: tuple[CatalogueEntry, ...] = (
     ),
     CatalogueEntry(
         year=2019,
-        event_name="Singapore Grand Prix",
-        fastf1_event_identifier="Singapore",
-        circuit="Marina Bay Street Circuit",
+        event_name="Japanese Grand Prix",
+        fastf1_event_identifier="Japan",
+        circuit="Suzuka Circuit",
         contested_decision=(
-            "Leclerc led Vettel on track, but Ferrari pitted Vettel first. The undercut "
-            "vaulted Vettel past his own teammate when Leclerc pitted a lap later — a "
-            "strategy call that visibly favoured one Ferrari driver over the other."
+            "Vettel led from pole on a soft-soft two-stop, defending against Bottas, who "
+            "started third and undercut past him with a soft-medium split. Bottas won; "
+            "Vettel's choice to stay on softs for both stints rather than switching to a "
+            "medium is the strategic road not taken."
         ),
         decision_points=(
             DecisionPointHint(
-                "pit_stop", "VET", 20, "Vettel pitted first, undercutting race leader Leclerc"
+                "pit_stop", "BOT", 17, "Bottas' first stop — the undercut that started the pass"
             ),
-            DecisionPointHint("pit_stop", "LEC", 21, "Leclerc's reactive stop the following lap"),
+            DecisionPointHint(
+                "compound", "VET", 16, "Vettel's second stint compound choice (soft, not medium)"
+            ),
         ),
     ),
     CatalogueEntry(

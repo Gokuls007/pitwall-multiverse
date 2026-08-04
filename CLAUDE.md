@@ -122,29 +122,51 @@ Phase 3 (validation) is a hard gate — no counterfactuals until replay reproduc
   `race_control_messages` as an ingestion test fixture. Run `python
   backend/scripts/prefetch_races.py` to (re)warm the cache and print the
   cleaning report for every race.
-- **Phase 2 (parameter fitting): done, after a correction pass.** `parameters/`
-  (tyre, fuel, pace, pit_loss, dirty_air, overtaking, fit_all) fitted for all
-  five catalogue races; results persisted to `data/fitted/`. Catalogue:
-  2019 Hungarian, 2019 Mexican, 2019 Singapore, 2019 Monaco, 2021 Spanish
-  (2018 Australian GP dropped — see DECISIONS.md).
+- **Phase 2 (parameter fitting): done, after two correction passes.**
+  `parameters/` (tyre, fuel, pace, pit_loss, dirty_air, overtaking, fit_all)
+  fitted for all five catalogue races; results persisted to `data/fitted/`.
+  Catalogue: 2019 Hungarian, 2019 Mexican, 2019 Japanese, 2019 Monaco, 2021
+  Spanish (2018 Australian GP and 2019 Singapore GP both dropped — see
+  DECISIONS.md for why, and for how they were screened for this time:
+  running the actual fitter on candidates, not inspecting secondary stats).
+  - **Honest framing (see DECISIONS.md's "fitted vs prior" table): this is
+    not a fully data-driven model.** Fitted from real data: `fuel_effect_s_per_lap`
+    (pooled cross-driver regression, all 5 races), most of `base_pace_s`,
+    70-95% of tyre degradation slopes (rest fall back, tracked per-cell),
+    `pit_lane_loss_s`, `overtake_difficulty`. Declared priors, not fitted:
+    `dirty_air` (every race), `pit_stop_stationary_s` (every race),
+    `overtake_skill`/`defence_skill` (uniform, every driver), SC/VSC
+    multipliers on the 3-4/5 races with no safety car period, and — new —
+    the *ordering and minimum separation* of tyre compound offsets
+    (starting point is fitted, but 58-80% of drivers per race need a
+    declared monotonic prior to correct it). Don't let README/Phase 8
+    language drift back to "parameters fitted from real race data"
+    unqualified.
   - Degradation slopes: positive on every race, verified via per-cell
-    provenance tracking (`fit_diagnostics["tyre_cell_provenance"]`), not just
-    a post-clip guard — tests check the *pre-clip* raw fit and cap how many
-    cells may need any fallback tier.
-  - Compound offset ordering (soft < medium < hard pace) is enforced via a
-    declared, weighted-isotonic monotonic prior
-    (`fit_diagnostics["compound_ordering_prior"]`) rather than fit freely —
-    it isn't identifiable from a single race (compound choice and race phase
-    are collinear across the whole field), the same class of problem as the
-    fuel/tyre confound.
+    provenance tracking (`fit_diagnostics["tyre_cell_provenance"]`) with a
+    pre-registered ceiling on fallback-cell fraction and a pre-registered
+    (not post-hoc) floor on the raw pre-clip positive rate — see DECISIONS.md
+    for why an earlier version of this bar was invalid (tuned after seeing
+    Singapore's score).
+  - Compound offset ordering is enforced via a declared, weighted-isotonic
+    monotonic prior with *both* a minimum (0.15s) and maximum (1.2s)
+    adjacent-gap floor/cap — isotonic regression alone only guarantees
+    non-decreasing order, not separation, and was verified to collapse
+    compounds to indistinguishable offsets before the floor was added.
   - **Dirty air is unfit on every catalogue race** (falls back to the spec
-    6.6 prior, `fit_diagnostics["dirty_air"]["fallback_used"]`), after fixing
-    a real conflation with traffic (spec 6.9) that was inflating it on street
-    circuits. Not solvable within Phase 2's single-race scope; needs
-    multi-race pooling or telemetry.
+    6.6 prior), after fixing a real conflation with traffic (spec 6.9) that
+    was inflating it on street circuits. Not solvable within Phase 2's
+    single-race scope; needs multi-race pooling or telemetry.
   - Run `python backend/scripts/fit_parameters.py` to refit and print a
     diagnostics summary per race.
-- Phase 3 (simulator + validation, hard gate): not started. Given dirty air
-  is currently prior-only on every race, expect the undercut/overtake
-  dynamics to be weaker than reality until that's revisited — watch this
-  specifically when validating race shape (spec 8.2).
+- Phase 3 (simulator + validation, hard gate): not started. Watch list going
+  in, all from Phase 2: (1) dirty air is prior-only everywhere, so expect
+  undercut/overtake dynamics weaker than reality until revisited; (2) if
+  `pit_lane_loss_s` is biased (it's downstream of the pace model and was not
+  independently validated), every counterfactual's "was pitting worth it"
+  comparison inherits that bias in one direction — check spec 8.2's
+  strategy-accuracy metric specifically for this; (3) a good gap-trace match
+  in validation could be validating the declared priors as much as the
+  fitted terms, given how much of `RaceParameters` is prior — don't read a
+  passing validation as confirming parts of the model that were never fit
+  from data in the first place.

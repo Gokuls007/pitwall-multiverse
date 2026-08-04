@@ -495,3 +495,145 @@ this order (each is a distinct problem, not one fix cascading into the next):
   different strategies (Vettel one-stopped, Leclerc pitted twice) — a live
   question of whether Leclerc's second stop cost more track position than
   the tyre offset was worth.
+
+---
+
+## Second correction pass — five more issues from external review
+
+- **2026-08-04 — The Singapore threshold move was the same mistake in a new
+  outfit: a bar chosen after seeing the number it was meant to judge.**
+  Lowering `MIN_RAW_OWN_FIT_POSITIVE_RATE` from 0.6 to 0.5 specifically
+  because Singapore scored 0.548 is circular, and documenting the relaxation
+  doesn't make it valid — it makes the same problem as the original
+  post-clip-only test (Part "Second correction pass" intro), just one level
+  up: a threshold tuned to the data it's supposed to be checking isn't a
+  test. Reverted to 0.6, chosen before looking at any race's result.
+  **The physical justification for the relaxation was also wrong and
+  unverified.** The claim "Singapore is a low-degradation circuit" was
+  asserted from memory, not checked — and Pirelli's own technical material
+  (searched, not assumed, this time) describes Marina Bay's degradation as
+  **thermal** (heat/internal-stress driven, heavily car-setup-dependent) *
+  *not simply low. That distinction matters: a genuinely near-zero true
+  slope would make the *sign* of a noisy estimate close to a coin flip and
+  the 54.8% raw-positive rate would be an honest, expected result; a
+  thermal, setup-dependent mechanism that a uniform linear-in-age model
+  structurally can't represent produces the same coin-flip symptom for a
+  completely different reason — the model failing to measure the effect,
+  not the effect being small. Un-picking these two explanations matters for
+  whether the race belongs in the catalogue at all, and only one of them
+  ("the model can't measure this") was actually checked. Singapore was
+  dropped from the catalogue and replaced with 2019 Japanese GP, screened
+  this time by *running the actual fitter* on candidates rather than
+  inspecting secondary stats first (min 12 usable laps/driver, 98% raw
+  own-fit positive rate, 9% fallback-cell fraction, fuel-effect condition
+  number 8.4 — the strongest data quality of any catalogue race). Story:
+  Vettel led pole-to-flag contention on a soft-soft two-stop, Bottas
+  undercut past him on a soft-medium split and won. (A lap-1 Leclerc/
+  Verstappen incident further back in the field is real in the data but is
+  not part of the catalogue framing — same treatment as any other race's
+  unrelated background incidents.)
+
+- **2026-08-04 — Added a compound-revisit count to catalogue screening, then
+  found the concern applies less than expected because the *primary* fuel-
+  effect method no longer needs it.** The reviewer's concern — fuel effect is
+  only identifiable when a driver revisits a compound at a different point in
+  the race — is correct for the per-driver method
+  (`tyre.fit_driver_joint`/`fuel.aggregate_fuel_effect`), and checking it
+  across the current catalogue is sobering: only 2021 Spanish GP has wide
+  compound-revisit coverage (13/20 drivers); every other race has just 1-2.
+  *However*, `fuel.fit_pooled_fuel_effect` (the primary method since the
+  first correction pass, precisely because it doesn't depend on any single
+  driver's stint structure) uses cross-*sectional* variation instead — at
+  any given lap number the field is a mix of tyre ages and compounds because
+  drivers pit at different times, which doesn't require any individual
+  driver to repeat a compound. Verified directly: the pooled fit's condition
+  number is 7.6-11.7 (excellent) across all five current races regardless of
+  each race's revisit count, including 2019 Mexican GP (10.2, only 2/20
+  drivers revisit). So the revisit count remains the right lens for
+  understanding *why* the old per-driver method struggles, and for the
+  compound-*offset* collinearity (which pooling did not fix — see the first
+  pass's entry — and which is why that problem needed a declared prior
+  instead), but it is not, on its own, disqualifying for fuel effect given
+  the pooled method now in use. The metrics that actually matter for
+  catalogue screening are the ones already being tracked per-race:
+  `fit_diagnostics["fuel"]["condition_number"]`, `["tyre_cell_provenance"]
+  ["fallback_fraction"]`, and the raw own-fit positive rate — all three were
+  checked directly (not inferred) before picking 2019 Japanese GP above.
+
+- **2026-08-04 — Isotonic regression guarantees ordering, not separation;
+  added a minimum-gap floor after checking actual post-correction values, not
+  just the violation count.** `_enforce_monotonic_compound_offsets` only
+  constrained the projection to be non-decreasing, and pool-adjacent-violators
+  (the isotonic algorithm) will happily project two compounds onto the *same*
+  value when a driver's raw offsets were badly backwards — checked directly
+  across the full catalogue and confirmed: a large fraction of adjacent-
+  compound gaps landed at exactly 0.000s post-correction (e.g. 14/20 drivers
+  on 2021 Spain's SOFT-MEDIUM pair, 8/12 on Hungary's MEDIUM-HARD pair).
+  Two compounds sharing an offset makes them interchangeable to the
+  simulator — no reason to ever choose one over the other — which kills
+  strategy modelling from a third direction, independent of the confound the
+  correction exists to fix in the first place. "Zero ordering violations
+  across all five races" was reported in the first pass as if it were a
+  result; it is the assumption restated (the projection cannot produce a
+  violation by construction) and does not belong in any external-facing
+  summary as an achievement. Added `MIN_ADJACENT_COMPOUND_GAP_S = 0.15` — a
+  conservative floor, deliberately below the "few tenths" typically quoted
+  for real compound deltas — enforced in the same forward pass as the
+  existing maximum-gap backstop. Re-verified after the fix: zero
+  adjacent-compound gaps below 0.15s across the full catalogue.
+
+- **2026-08-04 — Honest accounting of what fraction of `RaceParameters` is
+  actually fitted from this race's data versus a declared prior.** The
+  project's technical claim is "parameters fitted from real race data"; after
+  two correction passes, the defensible version is closer to *a simulator
+  with a handful of genuinely fitted parameters and a documented, bounded
+  prior for everything a single race's data can't identify* — worth stating
+  plainly now rather than discovering the mismatch when describing the
+  project later. Measured directly (not estimated) across the current
+  five-race catalogue:
+
+  | Component | Status |
+  |---|---|
+  | `fuel_effect_s_per_lap` | **Fitted** — pooled cross-driver regression, condition number 7.6-11.7, r² 0.41-0.85 on all 5 races |
+  | `base_pace_s` | **Fitted** for the large majority of drivers; teammate/field-median fallback for a small number per race (e.g. 1 driver in 2021 Spain) |
+  | `linear_deg_s_per_lap` (tyre slope) | **Fitted** for 70-95% of driver/compound cells depending on race (Spain 95%, Monaco 70%, worst case Monaco 30% fallback); pooled or flat-zero fallback for the rest, all tracked in `tyre_cell_provenance` |
+  | `base_offset_s` (tyre pace offset) | **Hybrid** — starts from this driver's own fitted value, but 58-80% of drivers per race need the monotonic-ordering prior to correct it (see above); the *ordering and minimum separation* are a declared prior even though the starting point is fitted |
+  | `pit_lane_loss_s` | **Fitted** from real in/out-lap timing — but downstream of the pace model above, so it inherits any bias in it (see next entry) |
+  | `pit_stop_stationary_s` | **Prior** (2.4s constant) — every race, not separable from transit loss without telemetry |
+  | `dirty_air` (`DirtyAirModel`) | **Prior** — every race, after the traffic-conflation fix confirmed it isn't fittable from single-race lap data with this method |
+  | `overtake_difficulty` | **Fitted**, though acknowledged as a noisy single-race estimate (spec 6.7) |
+  | `overtake_skill` / `defence_skill` | **Prior** (uniform 0.5) — every driver, every race, by design (spec 6.7 explicitly permits this) |
+  | `sc_lap_time_multiplier` | **Fitted** only on races with an actual SC period (2/5 current races); **prior** otherwise |
+  | `vsc_lap_time_multiplier` | **Fitted** only on races with an actual VSC period (1/5 current races); **prior** otherwise |
+
+  This is not necessarily wrong — it is the honest consequence of what a
+  single race's data can and can't identify, and the spec itself sanctions
+  priors for exactly this situation (Part 14 rule 1, spec 6.7). But it
+  changes what Phase 3 validation can conclude (a good gap-trace match could
+  be validating the priors as much as the fitted terms) and it changes how
+  the project should be described going forward — as a simulator whose
+  interesting engineering is as much about *knowing what it can't measure
+  from one race* as about the fitting itself, not as a fully data-driven
+  model. This framing should carry into `README.md` (Phase 8) rather than
+  being allowed to drift back toward the stronger, less accurate claim.
+
+- **2026-08-04 — Pit loss did not improve; it did not move, and that's not
+  the same thing.** The first correction pass's summary described Monaco's
+  `pit_lane_loss_s` shifting from 27.3s to 27.28s as evidence the compound-
+  offset fix had helped downstream estimates. A 0.02s change is noise, not a
+  validated improvement — exactly the kind of small framing slip the rest of
+  this pass exists to catch. No independent pit-loss fix was made or is
+  claimed; correct framing is "the number was recomputed with corrected
+  inputs and happened not to move much," nothing more. **Consequence flagged
+  for Phase 3, not corrected here:** pit loss is defined relative to
+  modelled expected pace (spec 6.5), so any remaining bias in the pace model
+  propagates directly into it — and because pit loss feeds every
+  counterfactual's "was pitting worth it" comparison, a systematic bias in
+  one direction (e.g. `pit_lane_loss_s` biased high) would bias every
+  counterfactual toward concluding "staying out was correct" regardless of
+  whether that's true for the specific decision being modelled. This is a
+  directional bias in the product's main output, not a cosmetic accuracy
+  issue, and belongs on the Phase 3 validation checklist explicitly (spec
+  8.2's strategy-accuracy metric — "does the simulated undercut/overcut
+  outcome match what really happened" — is exactly the test that would catch
+  it).

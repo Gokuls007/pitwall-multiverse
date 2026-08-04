@@ -126,11 +126,25 @@ def _sc_vsc_multipliers(
 # trend). The adjacent-compound gap is one of the few quantities that *is*
 # reasonably well known independent of any single race, from tyre-manufacturer
 # and historical data: consecutive dry compounds are roughly a few tenths of a
-# second apart in clean-air single-lap pace. Used only as an upper bound on
-# how large the enforced gap between adjacent compounds may be — it does not
+# second apart in clean-air single-lap pace. Used as an upper bound on how
+# large the enforced gap between adjacent compounds may be — it does not
 # inject a specific value; the isotonic projection below still uses this
 # race's own fitted offsets as the target, just constrained to be monotonic.
 MAX_ADJACENT_COMPOUND_GAP_S = 1.2
+
+# Isotonic regression guarantees *ordering*, not *separation* — pool adjacent
+# violators can and does project two compounds onto the same value when a
+# driver's raw offsets were badly backwards (verified across the full
+# catalogue: a large fraction of adjacent-compound gaps came out at exactly
+# 0.000s post-correction, e.g. 14/20 drivers on 2021 Spain's SOFT-MEDIUM
+# pair). Two compounds sharing an offset means the simulator treats them as
+# interchangeable — no reason to ever choose one over the other — which
+# breaks strategy modelling from a third direction, on top of the confound
+# this whole correction exists to fix. Enforced as a floor on top of the
+# isotonic projection: a conservative "a compound is genuinely a little
+# faster," well below the "few tenths" typically quoted, rather than a
+# specific claimed value.
+MIN_ADJACENT_COMPOUND_GAP_S = 0.15
 
 
 def _enforce_monotonic_compound_offsets(
@@ -171,10 +185,17 @@ def _enforce_monotonic_compound_offsets(
         iso = IsotonicRegression(increasing=True, out_of_bounds="clip")
         projected = iso.fit_transform(ranks, raw_offsets, sample_weight=weights)
 
-        # Backstop: cap any adjacent gap the projection still leaves too wide.
+        # Backstop: enforce a minimum *and* maximum adjacent gap. Isotonic
+        # regression alone only guarantees non-decreasing order — it will
+        # happily project two compounds onto the same value (or near it) when
+        # the driver's raw offsets were badly backwards, which makes them
+        # interchangeable in the simulator. Applied forward so each gap is
+        # checked against the (possibly just-raised) previous value.
         for i in range(1, len(projected)):
             gap = projected[i] - projected[i - 1]
-            if gap > MAX_ADJACENT_COMPOUND_GAP_S:
+            if gap < MIN_ADJACENT_COMPOUND_GAP_S:
+                projected[i] = projected[i - 1] + MIN_ADJACENT_COMPOUND_GAP_S
+            elif gap > MAX_ADJACENT_COMPOUND_GAP_S:
                 projected[i] = projected[i - 1] + MAX_ADJACENT_COMPOUND_GAP_S
 
         if not np.allclose(projected, raw_offsets, atol=1e-9):

@@ -249,16 +249,15 @@ def test_tyre_degradation_rates_are_positive(entry):
 # fraction of cells need a fallback at all, isn't well-fit no matter how
 # plausible the final numbers look — see DECISIONS.md's Australia writeup.
 MAX_FALLBACK_FRACTION = 0.6
-# Deliberately a weak bar (barely above a coin flip), chosen after inspecting
-# 2019 Singapore's raw slopes directly: they cluster tightly around zero
-# (mostly +/-0.15 s/lap), consistent with Singapore's real-world reputation as
-# a comparatively low-degradation circuit (cooler night-race track temps),
-# not a sign bias in the fitter. A near-zero true value makes the *sign* of a
-# small, noisy per-driver estimate close to a coin flip even when the
-# magnitude is being estimated correctly — this bar exists to catch a
-# systematic bias (well below 50%), not to demand confident positivity on a
-# circuit whose true degradation is genuinely small.
-MIN_RAW_OWN_FIT_POSITIVE_RATE = 0.5
+# Chosen before looking at per-race results — well above the 50% a
+# pure-noise (zero true signal) population would produce, so it actually
+# tests for a real, positive, findable degradation signal rather than a coin
+# flip. Do not tune this number after seeing what a specific race scores;
+# if a race can't clear a threshold set in advance, the right response is to
+# investigate that race's data quality and, if warranted, drop it from the
+# catalogue (spec 8.3) — not to lower the bar for every race to fit the one
+# result that failed it.
+MIN_RAW_OWN_FIT_POSITIVE_RATE = 0.6
 
 
 @pytest.mark.parametrize("entry", CATALOGUE, ids=lambda e: e.race_key)
