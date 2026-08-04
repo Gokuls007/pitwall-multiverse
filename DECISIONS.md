@@ -812,3 +812,109 @@ The overall picture has moved further toward "mostly declared priors, with a
 handful of genuinely data-distinguishable exceptions" than the second pass's
 already-humbler framing. This should be reflected in Phase 8's README, not
 just here.
+
+---
+
+## Fourth correction pass — a real compound-mapping bug, and two accounting corrections
+
+- **2026-08-04 — The pre-2019 legacy compound remap had a confirmed bug: it
+  silently renamed already-*valid* SOFT/MEDIUM labels to the wrong
+  neighbouring compound.** Not a "defaults to MEDIUM" problem — worse, and
+  specific to 2018-era races. 2018 used up to seven absolute dry-compound
+  names (HYPERSOFT..SUPERHARD); `_remap_legacy_compounds` mapped whichever
+  three were nominated for a given weekend onto SOFT/MEDIUM/HARD *by rank
+  order*, regardless of whether a name was already a valid, correctly-used
+  relative name. Reproduced exactly: 2018 Bahrain's actual raw compounds were
+  `{SUPERSOFT, SOFT, MEDIUM}` — SOFT and MEDIUM are *already* valid — but the
+  remap produced `{SUPERSOFT: SOFT, SOFT: MEDIUM, MEDIUM: HARD}`, silently
+  relabelling the real SOFT as MEDIUM and the real MEDIUM as HARD. This is
+  exactly what produced the earlier, previously-unexplained finding that
+  2018 Australian GP's data showed a HARD compound that wasn't part of that
+  weekend's allocation at all (`{ULTRASOFT: SOFT, SUPERSOFT: MEDIUM, SOFT:
+  HARD}` — the real SOFT became "HARD"). Every 2018 race run through this
+  pipeline had compound offsets and degradation slopes computed against the
+  wrong tyre for roughly 2/3 of its data.
+  **Fix, per Part 14 rule 3 ("never silently drop/mislabel data") and the
+  cheaper of two options weighed:** removed `_remap_legacy_compounds`
+  entirely rather than build a correct era-aware mapping (which would need
+  the specific 3-of-7 compounds nominated *per event*, published per race
+  weekend and not derivable from the softness order alone — real work, for
+  an era already down to a single catalogue race after other drops).
+  `loader.load_race` now raises for `year < MIN_CATALOGUE_YEAR` (2019).
+  Separately, `_parse_compound` no longer defaults an unrecognised value to
+  `MEDIUM` — it raises. The old default was worse than dropping the lap:
+  `MEDIUM` is the modal compound, so a mislabelled tyre becomes invisible
+  downstream, indistinguishable from a real MEDIUM lap to every fitter that
+  consumes it. `NaN` (the benign, expected case — first lap before tyre data
+  is recorded) is unaffected; those laps are already structurally excluded
+  by `cleaning.py`'s `first_lap` rule regardless of the placeholder compound
+  stored for them.
+
+- **2026-08-04 — 2018 Bahrain GP dropped (compound-mapping bug above made it
+  unsupportable) and replaced with 2019 Australian GP — an honest, modest
+  story rather than another search for a dramatic one.** Screened
+  disqualifier-first (`scripts/screen_race.py`): zero hard disqualifiers,
+  the cleanest possible result. Checked several 2019+ alternatives first
+  looking for a strategy-battle story with an equally clean disqualifier
+  profile (2019 Bahrain — Leclerc's late engine failure handed Hamilton the
+  win, a genuine story but mechanical/reliability-decided, not a strategy
+  counterfactual, and pit timing among the leaders was near-identical so
+  there's no real "road not taken" to feature; 2019 Britain, Belgium,
+  Canada — all clean-ish but either thin on strategy or (Canada) *exactly*
+  the same pattern as Abu Dhabi/Silverstone/Japan, a penalty that swapped
+  the race winner, immediately excluded). Concluded that continuing to
+  search for a race that is simultaneously dramatic, strategy-decided, and
+  free of any penalty near the front was chasing a combination that may not
+  reliably exist, and that the lesson of this entire review — an honest,
+  modest account beats an invented dramatic one — applies to race selection
+  as much as to narrative writing. 2019 Australian GP: Bottas made a strong
+  start (P2 to the lead by lap 1) and controlled the race to the flag on a
+  single stop; Hamilton never closed the gap. Catalogue text says exactly
+  this and explicitly disclaims a strategy battle that didn't happen, rather
+  than manufacturing one. Data quality: fallback fraction 18%, and this
+  race's fuel effect is the catalogue's one CI-distinguishable-from-prior
+  case (0.051-0.073, replacing Bahrain in that role).
+
+- **2026-08-04 — Tyre degradation slopes on the 4 races whose fuel effect is
+  only prior-consistent (all but 2019 Australian GP) are fitted *conditional
+  on a prior*, not independently fitted — the accounting must say so.** Pass
+  2 (`tyre.fit_driver_final`) holds `fuel_effect_s_per_lap` fixed while
+  fitting each compound's age slope, specifically to remove the fuel/age
+  confound (spec 6.3). That's the correct thing for the regression to do —
+  but it means that on any race where the held-fixed fuel value is itself
+  only "consistent with the prior" rather than distinguishably fitted, the
+  resulting slopes inherit that: they are fitted-given-an-assumed-fuel-rate,
+  not fitted from first principles. The regression is real and runs on real
+  lap times, so this isn't the same category as `dirty_air` or
+  `pit_stop_stationary_s` (wholly prior, no data touches them at all) — but
+  it's a materially weaker claim than "70-95% of tyre slopes are fitted,"
+  which is what the second and third passes' accounting said. Revised label:
+  **"fitted conditional on the fuel prior"** for those cells, on those 4
+  races.
+
+- **2026-08-04 — 61% of adjacent-compound gaps sitting at the declared floor
+  has a direct product consequence: `ChangeCompound` counterfactuals will
+  mostly return a near-mechanical answer.** One of the six Decision types
+  (spec 5.3) is `ChangeCompound`. For the majority of driver/compound pairs,
+  the pace difference between adjacent compounds *is* the bare
+  `MIN_ADJACENT_COMPOUND_GAP_S = 0.15` constant, carrying no information
+  about that specific driver or race. A user running a `ChangeCompound`
+  counterfactual on one of those pairs is therefore mostly exercising the
+  declared prior, not the model. **Flagged for a Phase 4/6 product decision,
+  not resolved here:** either don't ship `ChangeCompound` in v1, or ship it
+  with a visible "this comparison relies on a general prior, not
+  race-specific data" disclosure in the UI (`DecisionPanel`, spec 11.2).
+  `ChangePitLap` and `ShiftSafetyCar` are where this model has something
+  genuinely fitted to say (base pace, tyre-age slopes conditional on fuel,
+  pit loss, SC/VSC multipliers where fitted) — a demo or README example
+  should lead with one of those, not with `ChangeCompound`.
+
+- **2026-08-04 — The damage-detection rule (previous pass) has not been
+  validated against real data and should not be described as if it has
+  been.** It fires on zero laps across the entire current catalogue, so the
+  only evidence it works at all is its two synthetic unit tests (a
+  clear-cut synthetic step, and a synthetic continuous tyre-cliff it must
+  *not* flag). Keeping it — it's a defensible, conservative safeguard for
+  future candidates and the underlying cleaning gap (spec 4.2 has no rule
+  for sustained post-damage pace loss) is real — but "exists and is tested"
+  is the accurate claim, not "validated."

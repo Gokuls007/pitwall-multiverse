@@ -21,48 +21,25 @@ from pitwall.ingestion.safety_car import extract_safety_car_periods
 
 logger = logging.getLogger(__name__)
 
-# Pre-2019 seasons named dry compounds absolutely (softest -> hardest) rather than
-# relative to the race weekend's nomination, e.g. 2018 Australian GP ran
-# ULTRASOFT/SUPERSOFT/SOFT. The domain model (Part 5.1) only knows the post-2019
-# relative SOFT/MEDIUM/HARD scheme FastF1 itself unified on. Deviation from spec
-# 4.1's column table, recorded in DECISIONS.md: remap legacy names to relative
-# ones by rank among the compounds actually nominated for that race weekend.
-_LEGACY_SOFTNESS_ORDER = (
-    "HYPERSOFT",
-    "ULTRASOFT",
-    "SUPERSOFT",
-    "SOFT",
-    "MEDIUM",
-    "HARD",
-    "SUPERHARD",
-)
-_RELATIVE_NAMES = ("SOFT", "MEDIUM", "HARD")
-
-
-def _remap_legacy_compounds(laps: pd.DataFrame) -> pd.DataFrame:
-    dry_used = [c for c in _LEGACY_SOFTNESS_ORDER if c in set(laps["Compound"].dropna())]
-    if set(dry_used) <= set(_RELATIVE_NAMES):
-        return laps  # already the relative scheme, nothing to do
-
-    if len(dry_used) > 3:
-        logger.warning(
-            "More than 3 legacy dry compounds nominated (%s) — using the 3 most "
-            "common by lap count for the SOFT/MEDIUM/HARD remap.",
-            dry_used,
-        )
-        dry_used = (
-            laps["Compound"][laps["Compound"].isin(dry_used)]
-            .value_counts()
-            .index[:3]
-            .tolist()
-        )
-        dry_used = [c for c in _LEGACY_SOFTNESS_ORDER if c in dry_used]
-
-    mapping = dict(zip(dry_used, _RELATIVE_NAMES[: len(dry_used)], strict=False))
-    logger.info("Legacy compound remap applied: %s", mapping)
-    laps = laps.copy()
-    laps["Compound"] = laps["Compound"].replace(mapping)
-    return laps
+# Pre-2019 seasons named dry compounds absolutely (softest -> hardest, up to 7
+# grades: HYPERSOFT..SUPERHARD) rather than relative to the race weekend's
+# nomination, which the domain model's 3-value Compound enum assumes. An
+# earlier version of this module remapped legacy names by rank-order among
+# whichever compounds were nominated that weekend — found (by external
+# review) to be a real bug, not just an approximation: on both 2018 Bahrain
+# and 2018 Australian GP, it silently *renamed already-valid* SOFT/MEDIUM
+# labels to the wrong neighbouring compound whenever a third, genuinely
+# legacy-named compound was also present that weekend (e.g. Bahrain's real
+# SOFT was relabelled MEDIUM, real MEDIUM relabelled HARD — confirmed by
+# reproducing the exact mapping dict). A correct fix needs the specific
+# 3-of-7 compounds nominated for each individual event (published per race
+# weekend, not deducible from the softness order alone) — out of scope for
+# this project's timeline. Cheaper and safer, since two 2018 races were
+# already dropped from the catalogue for unrelated reasons: restrict the
+# catalogue to 2019+, where FastF1 reports the unified relative scheme
+# directly, and remove the remap entirely rather than leave a latent
+# correctness bug in code nothing exercises. See DECISIONS.md.
+MIN_CATALOGUE_YEAR = 2019
 
 
 @dataclass
@@ -102,12 +79,34 @@ def race_key_for(year: int, event_name: str) -> str:
 
 
 def _parse_compound(value: object) -> Compound:
-    if pd.notna(value):
-        try:
-            return Compound(value)
-        except ValueError:
-            logger.warning("Unrecognised compound %r, defaulting to MEDIUM", value)
-    return Compound.MEDIUM
+    """Parse a raw FastF1 compound string.
+
+    A value the `Compound` enum doesn't recognise is refused loudly (raises),
+    not silently defaulted — spec Part 14 rule 3 ("never silently drop
+    data") applies just as much to silently *mislabelling* data. An earlier
+    version defaulted unrecognised values to `MEDIUM`, which is worse than
+    dropping the lap entirely: `MEDIUM` is the modal compound, so the
+    corruption is invisible downstream — a mislabelled SUPERSOFT lap looks
+    exactly like a real MEDIUM lap to every fitter that consumes it. If this
+    raises, the compound needs an explicit, verified mapping (or the race is
+    out of scope — see `MIN_CATALOGUE_YEAR`), not a guess.
+
+    Missing (`NaN`) is different from *unrecognised*: it's the expected,
+    benign case for the first lap of a stint before tyre data is recorded,
+    and those laps are always structurally excluded from fitting by
+    `cleaning.py` regardless of what placeholder compound is stored here.
+    """
+    if pd.isna(value):
+        return Compound.MEDIUM
+    try:
+        return Compound(value)
+    except ValueError:
+        raise ValueError(
+            f"Unrecognised compound {value!r} — refusing to silently default. "
+            f"Either this race predates the unified SOFT/MEDIUM/HARD naming "
+            f"(see MIN_CATALOGUE_YEAR) or genuinely has bad data; investigate "
+            f"before proceeding, don't guess."
+        ) from None
 
 
 def _build_driver_entries(results: pd.DataFrame, laps: pd.DataFrame) -> tuple[DriverEntry, ...]:
@@ -197,13 +196,24 @@ def load_race(year: int, event_identifier: str) -> tuple[RaceSnapshot, Ingestion
     `event_identifier` is whatever `fastf1.get_session` accepts as the `gp`
     argument (verified against the installed 3.8.3 API, DECISIONS.md) — e.g.
     "Abu Dhabi".
+
+    Only `year >= MIN_CATALOGUE_YEAR` (2019) is supported: pre-2019 seasons
+    used an absolute, up-to-7-grade compound naming scheme (HYPERSOFT to
+    SUPERHARD) that can't be safely reduced to this project's 3-value
+    Compound enum without per-event nomination data (see MIN_CATALOGUE_YEAR's
+    docstring and DECISIONS.md for the bug this replaced).
     """
+    if year < MIN_CATALOGUE_YEAR:
+        raise ValueError(
+            f"year={year} predates {MIN_CATALOGUE_YEAR}, before FastF1's unified "
+            f"SOFT/MEDIUM/HARD compound naming — not supported, see MIN_CATALOGUE_YEAR."
+        )
+
     enable_cache()
     session = fastf1.get_session(year, event_identifier, "R")
     session.load(laps=True, telemetry=False, weather=True, messages=True)
 
     laps = session.laps.copy()
-    laps = _remap_legacy_compounds(laps)
     # Convert LapTime (a pandas Timedelta) to float seconds immediately at the
     # ingestion boundary (spec 4.1) — nothing inward of this module ever sees a Timedelta.
     laps["LapTimeSeconds"] = laps["LapTime"].dt.total_seconds()

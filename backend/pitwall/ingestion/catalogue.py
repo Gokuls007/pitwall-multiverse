@@ -82,22 +82,24 @@ CATALOGUE: tuple[CatalogueEntry, ...] = (
         ),
     ),
     CatalogueEntry(
-        year=2018,
-        event_name="Bahrain Grand Prix",
-        fastf1_event_identifier="Bahrain",
-        circuit="Bahrain International Circuit",
+        year=2019,
+        event_name="Australian Grand Prix",
+        fastf1_event_identifier="Australia",
+        circuit="Albert Park Circuit",
         contested_decision=(
-            "Ferrari's Vettel and Bottas controlled the race from the front on a "
-            "supersoft one-stop. Hamilton, starting ninth after a poor qualifying, ran an "
-            "alternate one-stop (starting on the harder soft) and cut through the field to "
-            "finish third — the counterfactual is whether matching Ferrari's compound "
-            "choice would have gained or cost him time given his starting position."
+            "A modest story, described honestly rather than dressed up: Bottas made a "
+            "strong start from P2 to lead by lap 1 and controlled the race to the flag on "
+            "a single soft-to-medium stop, with Hamilton never able to close the gap. "
+            "There is no dramatic pit battle here — the counterfactual value is in "
+            "testing whether a different stop lap for either driver would have let "
+            "Hamilton close in, not in relitigating a contested decision that didn't "
+            "really happen on the day."
         ),
         decision_points=(
+            DecisionPointHint("pit_stop", "BOT", 23, "Bottas' only stop, from the race lead"),
             DecisionPointHint(
-                "compound", "HAM", 1, "Hamilton's starting compound (soft, not supersoft)"
+                "pit_stop", "HAM", 15, "Hamilton's own stop — earlier than Bottas'"
             ),
-            DecisionPointHint("pit_stop", "HAM", 25, "Hamilton's only stop, well after the leaders"),
         ),
     ),
     CatalogueEntry(

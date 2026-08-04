@@ -137,23 +137,39 @@ Phase 3 (validation) is a hard gate — no counterfactuals until replay reproduc
   wrong order for three races running before this was made mechanical.
   - **Honest framing (see DECISIONS.md's updated "fitted vs prior" table):
     this is a simulator with a handful of genuinely fitted parameters and
-    priors for most of the rest, not a data-driven model.** Fitted and
-    distinguishable from its prior: tyre degradation slopes for 66-95% of
-    driver/compound cells (ceiling on fallback fraction: 40%); `base_pace_s`
-    for most drivers; `pit_lane_loss_s` (though downstream of pace-model
-    bias, unvalidated); `overtake_difficulty`. `fuel_effect_s_per_lap` is
-    fitted-and-distinguishable on only 1 of 5 races (2018 Bahrain) — checked
-    with a cluster-robust confidence interval, not a condition number, since
-    laps from the same driver aren't independent observations; the other 4
-    races' CIs contain the 0.05 prior, so "consistent with the prior" is the
-    honest label, not "fitted." Compound-offset **separation** is
-    prior-dominated, not merely "hybrid": 61% of all adjacent-compound gaps
-    across the catalogue sit at *exactly* the declared 0.15s floor, meaning
-    zero information from that driver's own data for the majority of pairs.
-    Fully prior, every race: `dirty_air`, `pit_stop_stationary_s`,
-    `overtake_skill`/`defence_skill` (uniform), SC/VSC multipliers on races
-    with no safety car. Don't let README/Phase 8 language drift back to
-    "parameters fitted from real race data" unqualified.
+    priors for most of the rest, not a data-driven model.**
+    `fuel_effect_s_per_lap` is fitted-and-distinguishable-from-its-0.05-prior
+    on only 1 of 5 races (2019 Australian GP, CI 0.051-0.073) — checked with
+    a cluster-robust confidence interval, not a condition number, since laps
+    from the same driver aren't independent observations; the other 4
+    races' CIs contain 0.05, so "consistent with the prior" is the honest
+    label there, not "fitted." **This has a knock-on consequence for tyre
+    degradation slopes that the accounting must carry, not just fuel
+    effect**: pass 2 (`tyre.fit_driver_final`) holds the fuel effect fixed
+    while fitting each compound's age slope, specifically to de-confound age
+    from fuel burn — so on the 4 races where that fuel effect is itself only
+    prior-consistent, the resulting slopes are **fitted conditional on a
+    prior**, not independently fitted, even though the regression that
+    produces them is real and runs on real lap times. Say "fitted
+    conditional on the fuel prior" for those 4 races' 66-95% non-fallback
+    tyre cells, not "fitted" unqualified. Compound-offset **separation** is
+    prior-dominated outright, not merely "hybrid": 61% of all
+    adjacent-compound gaps across the catalogue sit at *exactly* the
+    declared 0.15s floor, meaning zero information from that driver's own
+    data for the majority of pairs — **this means `ChangeCompound`
+    counterfactuals (one of the six Decision types, spec 5.3) will mostly
+    return a near-mechanical answer reflecting the 0.15s floor constant, not
+    anything specific to that driver or race.** Decide before Phase 4/6
+    whether to ship `ChangeCompound` in v1 at all, or ship it visibly
+    flagged as prior-driven in the UI — `ChangePitLap` and `ShiftSafetyCar`
+    are where this model actually has something fitted to say; don't let a
+    demo lead with the weakest lever. Fully prior, every race: `dirty_air`,
+    `pit_stop_stationary_s`, `overtake_skill`/`defence_skill` (uniform),
+    SC/VSC multipliers on races with no safety car. `base_pace_s` (most
+    drivers) and `pit_lane_loss_s` (downstream of the pace model, itself
+    unvalidated) are the closest things to unconditionally fitted. Don't let
+    README/Phase 8 language drift back to "parameters fitted from real race
+    data" unqualified.
   - Degradation slopes: positive on every race, verified via per-cell
     provenance tracking (`fit_diagnostics["tyre_cell_provenance"]`) with a
     pre-registered floor on the raw pre-clip positive rate and a
@@ -175,8 +191,12 @@ Phase 3 (validation) is a hard gate — no counterfactuals until replay reproduc
     (that pace becomes the stint's own norm). Tuned conservatively (4.0s
     sustained over 5+ laps, rolling local baseline) after an initial version
     produced 294 false positives on 2019 Monaco — almost certainly
-    deliberate one-stop pace management, not damage. Currently flags zero
-    laps on the whole catalogue; exists and is tested for future candidates.
+    deliberate one-stop pace management, not damage. **It currently fires on
+    zero laps across the entire catalogue, so it is exercised only by its
+    two synthetic unit tests, not by any real race — it has not been
+    validated against a confirmed real damage case.** Keep it, but don't
+    describe it as validated; it's a defensible, tested safeguard for future
+    candidates, not a proven detector.
   - Run `python backend/scripts/fit_parameters.py` to refit and print a
     diagnostics summary per race; `python backend/scripts/screen_race.py
     <year> <event>` to hard-disqualifier-screen a new candidate first.

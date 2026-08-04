@@ -23,7 +23,7 @@ import pytest
 from pitwall.domain.enums import Compound
 from pitwall.ingestion import cleaning
 from pitwall.ingestion.catalogue import CATALOGUE
-from pitwall.ingestion.loader import load_race
+from pitwall.ingestion.loader import MIN_CATALOGUE_YEAR, _parse_compound, load_race
 from pitwall.ingestion.safety_car import lap_is_red, lap_is_sc, lap_is_vsc
 
 
@@ -46,7 +46,7 @@ def _load(year: int, event_identifier: str):
 # product itself.
 EXPECTED = {
     "2019_mexican": (71, ["HAM", "VET", "BOT", "LEC", "ALB"], []),
-    "2018_bahrain": (57, ["VET", "BOT", "HAM", "GAS", "MAG"], []),
+    "2019_australian": (58, ["BOT", "HAM", "VER", "VET", "LEC"], []),
     "2019_monaco": (78, ["HAM", "VET", "BOT", "VER", "GAS"], []),
     "2019_hungarian": (70, ["HAM", "VER", "VET", "LEC", "SAI"], []),
     "2021_spanish": (66, ["HAM", "VER", "BOT", "LEC", "PER"], []),
@@ -268,7 +268,37 @@ def test_exclusion_summary_counts_all_reasons():
 
 
 def test_compound_enum_covers_synthetic_values():
-    # Guards against the legacy pre-2019 naming (ULTRASOFT etc.) silently slipping
-    # through unmapped — Compound() must only ever see the 5 relative/wet names.
+    # Compound() must only ever see the 5 relative/wet names FastF1 reports
+    # from 2019 onward (see MIN_CATALOGUE_YEAR — legacy pre-2019 naming is
+    # out of scope entirely, not remapped).
     for value in ("SOFT", "MEDIUM", "HARD", "INTERMEDIATE", "WET"):
         assert Compound(value).value == value
+
+
+def test_parse_compound_raises_on_unrecognised_value():
+    # Spec Part 14 rule 3: never silently drop/mislabel data. A prior version
+    # of this parser defaulted an unrecognised compound to MEDIUM — the worst
+    # possible default, since it's the modal compound and makes the
+    # corruption invisible downstream. Must raise instead.
+    with pytest.raises(ValueError, match="Unrecognised compound"):
+        _parse_compound("SUPERSOFT")
+    with pytest.raises(ValueError, match="Unrecognised compound"):
+        _parse_compound("ULTRASOFT")
+
+
+def test_parse_compound_handles_missing_value_gracefully():
+    # NaN is the expected, benign case (first lap before tyre data is
+    # recorded) — not an unrecognised value — and those laps are always
+    # structurally excluded from fitting regardless of this placeholder.
+    import numpy as np
+
+    assert _parse_compound(float("nan")) == Compound.MEDIUM
+    assert _parse_compound(np.nan) == Compound.MEDIUM
+
+
+def test_load_race_rejects_pre_2019_years():
+    # 2018-and-earlier seasons used an absolute, up-to-7-grade compound
+    # naming scheme that can't be safely reduced to this project's 3-value
+    # Compound enum without per-event nomination data — out of scope.
+    with pytest.raises(ValueError, match=str(MIN_CATALOGUE_YEAR)):
+        load_race(2018, "Bahrain")

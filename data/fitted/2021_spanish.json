@@ -554,7 +554,7 @@
   "overtake_difficulty": 0.9044117647058824,
   "sc_lap_time_multiplier": 1.3741521510980441,
   "vsc_lap_time_multiplier": 1.35,
-  "fitted_at": "2026-08-04T04:56:17.682490+00:00",
+  "fitted_at": "2026-08-04T05:20:31.129198+00:00",
   "fit_diagnostics": {
     "per_driver_fallbacks": {
       "TSU": "Only 7 usable laps (<6); cannot fit independently (spec 6.2) \u2014 using teammate fallback below. Copied teammate GAS's fit."
