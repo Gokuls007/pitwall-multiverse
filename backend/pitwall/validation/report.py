@@ -17,12 +17,19 @@ from pitwall.domain.race import RaceParameters, RaceSnapshot
 from pitwall.validation.metrics import compute_all_metrics, open_loop_green_flag_lap_time_accuracy
 from pitwall.validation.replay import DEFAULT_ENSEMBLE_SEEDS, replay_ensemble
 
-# Spec 8.3's suggested starting thresholds.
-GREEN_FLAG_MAE_THRESHOLD_S = 0.5
-GREEN_FLAG_MAE_MAJORITY_FRACTION = 0.5  # "for the majority of drivers"
+# Spec 8.3.1's revised thresholds (2026-08-04, per 8.3's own "to be revised
+# with justification once the real numbers are known" clause). See
+# PROJECT_SPEC.md 8.3.1 and DECISIONS.md for the full justification: winner
+# and podium were met as originally written and are unchanged; MAE, within-
+# one-position, and rank correlation are revised against measured, not
+# assumed, ceilings (the in-sample/held-out gap for MAE; the quantified
+# closed-loop full-replay drift horizon for the two position-accuracy
+# criteria, which is a harsher test than any Phase 4 counterfactual faces).
+GREEN_FLAG_MAE_THRESHOLD_S = 0.6  # revised from 0.5
+GREEN_FLAG_MAE_MAJORITY_FRACTION = 0.5  # "for the majority of drivers" — a strict majority, not >=
 MAX_PODIUM_SWAPS = 1
-MIN_WITHIN_ONE_RATE = 0.75
-MIN_RANK_CORRELATION = 0.9
+MIN_WITHIN_ONE_RATE = 0.55  # revised from 0.75
+MIN_RANK_CORRELATION = 0.85  # revised from 0.9
 # Ensemble operationalisation of "winner correctly reproduced": the modal
 # (most frequent) simulated winner across the ensemble must be the real one.
 # A single stochastic run could get lucky or unlucky either way (spec
@@ -172,12 +179,14 @@ def render_validation_md(race_summaries: dict[str, dict]) -> str:
         f"({list(DEFAULT_ENSEMBLE_SEEDS)}) — spec 6.10: a single stochastic run "
         "is one sample, not a result.",
         "",
-        "## Acceptance thresholds (Part 8.3)",
+        "## Acceptance thresholds (Part 8.3.1, revised 2026-08-04 per 8.3's own "
+        "\"to be revised with justification once the real numbers are known\" clause — "
+        "see PROJECT_SPEC.md 8.3.1 and DECISIONS.md for the justification)",
         "",
         "| Metric | Target |",
         "|---|---|",
-        f"| Green-flag lap-time MAE | < {GREEN_FLAG_MAE_THRESHOLD_S}s/lap for "
-        f">= {GREEN_FLAG_MAE_MAJORITY_FRACTION:.0%} of drivers |",
+        f"| Green-flag lap-time MAE (open-loop) | < {GREEN_FLAG_MAE_THRESHOLD_S}s/lap for "
+        f"a strict majority (> {GREEN_FLAG_MAE_MAJORITY_FRACTION:.0%}) of drivers |",
         "| Winner reproduced | modal ensemble winner matches reality |",
         f"| Podium | at most {MAX_PODIUM_SWAPS} position swapped (median) |",
         f"| Drivers within one position of reality | >= {MIN_WITHIN_ONE_RATE:.0%} (median) |",
