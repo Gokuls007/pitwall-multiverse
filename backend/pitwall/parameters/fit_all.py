@@ -266,7 +266,26 @@ def _check_compound_ordering(driver_params: dict[str, DriverParams]) -> dict:
     return result
 
 
-def fit_race_parameters(snapshot: RaceSnapshot) -> RaceParameters:
+def fit_race_parameters(
+    snapshot: RaceSnapshot,
+    *,
+    dirty_air_override: DirtyAirModel | None = None,
+    base_pace_correction_s: float = 0.0,
+) -> RaceParameters:
+    """`dirty_air_override` and `base_pace_correction_s` exist for
+    `fit_catalogue_with_pooled_dirty_air`'s second pass (see that function's
+    docstring for why per-race dirty-air fitting doesn't have enough power
+    and needs pooling across the catalogue). Callers fitting a single race
+    on its own — the default — get identical behaviour to before these
+    parameters existed: dirty air fit (and rejected) per-race as always, no
+    base-pace correction applied.
+
+    `base_pace_correction_s` is a uniform additive shift applied to every
+    driver's `base_pace_s` *before* pit loss is fit, so pit loss (itself
+    `expected_clean_pace_s`-relative) is computed against the corrected
+    baseline rather than inheriting the old bias — see DECISIONS.md for why
+    this correction exists and why it must land before, not after, pit loss.
+    """
     diagnostics: dict = {"per_driver_fallbacks": {}, "warnings": []}
 
     drivers_with_laps = sorted({lap.driver for lap in snapshot.laps})
@@ -404,15 +423,39 @@ def fit_race_parameters(snapshot: RaceSnapshot) -> RaceParameters:
     diagnostics["compound_ordering_prior"] = monotonic_diagnostics
     diagnostics["compound_ordering_check"] = _check_compound_ordering(driver_params)
 
+    if base_pace_correction_s != 0.0:
+        # See DECISIONS.md: expected_clean_pace_s's own fitted intercept
+        # absorbs the field's mean traffic exposure (most laps used to fit
+        # it had some car ahead), so base_pace_s is biased slow field-wide
+        # by roughly the asymptote of the gap-vs-residual curve. Applied
+        # uniformly (not per-driver) since the pooled fit that produced this
+        # correction has no per-driver resolution to offer.
+        driver_params = {
+            d: DriverParams(
+                driver=dp.driver,
+                base_pace_s=dp.base_pace_s + base_pace_correction_s,
+                pace_std_s=dp.pace_std_s,
+                tyre_models=dp.tyre_models,
+                overtake_skill=dp.overtake_skill,
+                defence_skill=dp.defence_skill,
+            )
+            for d, dp in driver_params.items()
+        }
+        diagnostics["base_pace_correction_s"] = base_pace_correction_s
+
     pit_lane_loss_s, pit_stop_stationary_s, pit_diagnostics = pit_loss.fit_pit_loss(
-        snapshot, driver_params, fuel_effect_s_per_lap
+        snapshot, driver_params, fuel_effect_s_per_lap, dirty_air_model=dirty_air_override
     )
     diagnostics["pit_loss"] = pit_diagnostics
 
-    dirty_air_model, dirty_air_diagnostics = dirty_air.fit_dirty_air(
-        snapshot, driver_params, fuel_effect_s_per_lap
-    )
-    diagnostics["dirty_air"] = dirty_air_diagnostics
+    if dirty_air_override is not None:
+        dirty_air_model = dirty_air_override
+        diagnostics["dirty_air"] = {"pooled_override": True, "n_observations": dirty_air_override.n_observations}
+    else:
+        dirty_air_model, dirty_air_diagnostics = dirty_air.fit_dirty_air(
+            snapshot, driver_params, fuel_effect_s_per_lap
+        )
+        diagnostics["dirty_air"] = dirty_air_diagnostics
 
     overtake_difficulty, overtake_diagnostics = overtaking.fit_overtake_difficulty(snapshot)
     diagnostics["overtaking"] = overtake_diagnostics
@@ -435,6 +478,42 @@ def fit_race_parameters(snapshot: RaceSnapshot) -> RaceParameters:
         fitted_at=datetime.now(timezone.utc),
         fit_diagnostics=diagnostics,
     )
+
+
+def fit_catalogue_with_pooled_dirty_air(snapshots: list[RaceSnapshot]) -> dict[str, RaceParameters]:
+    """Two-pass fit across the whole catalogue (spec 6.6's own admission that
+    dirty air isn't identifiable from one race's data, extended to the curve
+    itself — see `dirty_air.fit_pooled_dirty_air_across_races`'s docstring
+    for the full mechanism and derivation).
+
+    Pass 1: fit every race independently exactly as `fit_race_parameters`
+    always has (per-race dirty air fit and rejected, as before). Pass 2:
+    pool dirty-air residuals across all of pass 1's results, then refit
+    every race with the pooled `DirtyAirModel` and base-pace correction
+    applied. Takes already-loaded snapshots (not a catalogue of entries to
+    load) to keep `parameters/` free of `ingestion/` imports (spec 2.2) —
+    callers (scripts) load the snapshots first.
+    """
+    first_pass = {snapshot.race_key: fit_race_parameters(snapshot) for snapshot in snapshots}
+
+    pooled_model, base_pace_correction_s, pooled_diagnostics = dirty_air.fit_pooled_dirty_air_across_races(
+        [
+            (snapshot, first_pass[snapshot.race_key].drivers, first_pass[snapshot.race_key].fuel_effect_s_per_lap)
+            for snapshot in snapshots
+        ]
+    )
+
+    second_pass: dict[str, RaceParameters] = {}
+    for snapshot in snapshots:
+        params = fit_race_parameters(
+            snapshot,
+            dirty_air_override=pooled_model,
+            base_pace_correction_s=base_pace_correction_s,
+        )
+        params.fit_diagnostics["pooled_dirty_air_fit"] = pooled_diagnostics
+        second_pass[snapshot.race_key] = params
+
+    return second_pass
 
 
 # --------------------------------------------------------------------------

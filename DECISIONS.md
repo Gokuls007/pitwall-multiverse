@@ -600,11 +600,13 @@ this order (each is a distinct problem, not one fix cascading into the next):
   | `base_offset_s` (tyre pace offset) | **Hybrid** — starts from this driver's own fitted value, but 58-80% of drivers per race need the monotonic-ordering prior to correct it (see above); the *ordering and minimum separation* are a declared prior even though the starting point is fitted |
   | `pit_lane_loss_s` | **Fitted** from real in/out-lap timing — but downstream of the pace model above, so it inherits any bias in it (see next entry) |
   | `pit_stop_stationary_s` | **Prior** (2.4s constant) — every race, not separable from transit loss without telemetry |
-  | `dirty_air` (`DirtyAirModel`) | **Prior** — every race, after the traffic-conflation fix confirmed it isn't fittable from single-race lap data with this method |
+  | `dirty_air` (`DirtyAirModel`) | **Prior**, and as of 2026-08-04 **no longer applied in the simulator at all** — still fitted (always rejected, falls back to the same prior every race) and stored on `RaceParameters` for diagnostics, but `compose_lap_time_s` no longer takes it. Superseded by the stuck-behind clamp + blue-flag rule below (see Phase 3 section) |
   | `overtake_difficulty` | **Fitted**, though acknowledged as a noisy single-race estimate (spec 6.7) |
   | `overtake_skill` / `defence_skill` | **Prior** (uniform 0.5) — every driver, every race, by design (spec 6.7 explicitly permits this) |
   | `sc_lap_time_multiplier` | **Fitted** only on races with an actual SC period (2/5 current races); **prior** otherwise |
   | `vsc_lap_time_multiplier` | **Fitted** only on races with an actual VSC period (1/5 current races); **prior** otherwise |
+  | `MAX_GAP_CLOSURE_PER_LAP_S` (SC gap-closure rate) | **Prior** (15.0s/lap) — calibrated by eye against exactly one race's telemetry (2019 Monaco); the catalogue's only other full-SC period (2021 Spanish) couldn't cross-check it (lapped-traffic wraparound confounds the reconstruction). Single-data-point, unverified against a second case |
+  | `BLUE_FLAG_YIELD_PROBABILITY` (lapped-car yield rate) | **Prior** (0.9) — no per-incident blue-flag-compliance-time measurement exists in this project's ingestion to fit against; grounded in the rule's existence, not its exact timing |
 
   This is not necessarily wrong — it is the honest consequence of what a
   single race's data can and can't identify, and the spec itself sanctions
@@ -918,3 +920,1009 @@ just here.
   future candidates and the underlying cleaning gap (spec 4.2 has no rule
   for sustained post-damage pace loss) is real — but "exists and is tested"
   is the accurate claim, not "validated."
+
+---
+
+## Phase 3 — Simulator and validation ⚠️ HARD GATE: NOT PASSED, NOT COMMITTED
+
+Built the full simulation engine (`simulation/`: `rng`, `lap_time`, `overtake`,
+`safety_car`, `pit`, `position`, `engine` — replay mode only, per Phase 3's
+scope) and the validation harness (`validation/`: `replay`, `metrics`,
+`report`), generated a real `VALIDATION.md` and gap-trace plots for all five
+catalogue races. **All five races fail the Part 8.3 acceptance thresholds.**
+Per the spec's explicit instruction ("if the acceptance thresholds are not
+met, stop and report... do not proceed and do not adjust the thresholds"),
+this is not committed and Phase 4 has not been started. The code exists in
+the working tree, tested (28 simulation tests, all passing — the engine
+itself is not buggy in the sense of failing its own unit/property/determinism
+tests) and is ready to commit once a decision is made on how to proceed.
+
+**2026-08-04 — Engine design decisions**, recorded before the results below
+since they're independent of whether the accuracy gate passes:
+- `sc_vsc_effect` applied multiplicatively (lap_time * multiplier), not
+  additively as spec 6.1's list-form composition might suggest — matches how
+  the multiplier was *fitted* (spec 6.8: ratio of actual to expected pace).
+- `traffic_penalty` (6.9) reuses the `DirtyAirModel` curve rather than a
+  separate fitted term — there is no separate traffic model in this project.
+- Track position resolution (spec 7.2): a single left-to-right pass over
+  adjacent pairs per lap, each attempted at most once (no chained re-checks
+  of a just-swapped pair). Every position change goes through
+  `overtake.pass_probability`/`resolve_pass`, even when cumulative time has
+  already crossed over (gap <= 0) — that only raises the probability of an
+  attempt, never auto-swaps, per spec 7.2's explicit warning against exactly
+  that bug.
+- Overtaking is disabled entirely during SC/VSC laps (real F1 prohibits it);
+  full SC additionally compresses the field toward a fixed 1.5s following
+  distance (declared prior, Part 14 rule 1 — not fitted, spec 4.1's ingestion
+  doesn't capture following-distance data). RED periods (none in the current
+  catalogue) are folded into the SC bucket as the closest fitted analogue —
+  an untested simplification.
+- Retirements are exogenous (spec 7.3): held at the real retirement lap,
+  simulated normally up to that point.
+- A driver's compound that appears in real data but was never fitted (e.g.
+  2019 Australian GP's Ricciardo ran SOFT for exactly one lap — almost
+  certainly a splash-and-dash out-lap, structurally excluded from Phase 2's
+  fitting entirely, so no `TyreModel` entry exists for it) falls back to that
+  driver's most-sampled fitted compound for *that lap's pace calculation
+  only*; the real compound is still recorded on the `LapState`. This
+  surfaced as a crash on first running validation across the full catalogue,
+  fixed before any accuracy assessment.
+
+### Results (10-seed ensemble per race; full numbers in VALIDATION.md)
+
+| Race | Winner | Podium swaps | Within 1 pos. | Rank corr. | Green-flag MAE |
+|---|---|---|---|---|---|
+| 2019 Hungarian | FAIL (HAM real / VER modal) | OK (1.0) | FAIL (68.4%) | OK (0.963) | FAIL (1.12s, 0% of drivers <0.5s) |
+| 2019 Mexican | FAIL (HAM / LEC) | — | FAIL (55.6%) | OK (0.941) | FAIL |
+| 2019 Australian | FAIL (BOT / HAM) | OK | FAIL (52.9%) | **FAIL** (0.850) | FAIL (1.09s) |
+| 2019 Monaco | OK (HAM / HAM, 90%) | OK | FAIL (57.9%) | OK (0.947) | FAIL (1.60s, 0% <0.5s) |
+| 2021 Spanish | OK (HAM / HAM, 80%) | OK (0.0) | FAIL (71.1%) | OK (0.929) | FAIL (1.10s) |
+
+Zero of five races pass. The single most consistently and severely broken
+metric is green-flag lap-time MAE — every race is 2-3x over the 0.5s target,
+and on 3 of 5 races **0% of drivers** meet it at all. Podium swaps and rank
+correlation are mostly fine in isolation; within-one-position and winner
+correctness fail almost everywhere, which is the expected downstream
+consequence of a lap-by-lap simulation where per-lap pace errors compound
+over 50-80 laps into materially different finishing order, even when the
+overall *shape* of the race (rank correlation) is roughly preserved.
+
+### Diagnosis (investigated, not just observed)
+
+Rather than report the aggregate failure and stop, traced the dominant
+component on 2019 Hungary's Hamilton (a representative mid-pack green-flag
+stint) by comparing the exact composed lap time against reality lap by lap,
+then ran a controlled ablation:
+
+1. **Confirmed the dirty-air fallback prior is a real, sizeable contributor,
+   not a rounding error.** Hamilton's real gap to the car ahead through this
+   stint was a steady ~2.0-2.5s — squarely in the range where the *prior*
+   `DirtyAirModel` (max_penalty_s=1.525, decay_scale_s=2.6 — literally the
+   midpoint of spec 6.6's own sanity bounds, since dirty air is unfit on
+   every race, see the Phase 2 entries above) still applies a
+   0.6-0.9s/lap penalty. Re-ran the full validation with `dirty_air` zeroed
+   out as a controlled experiment: Hungary's green-flag MAE dropped from
+   1.12s to 0.76s — dirty air's generic prior accounts for roughly a third
+   of the error on its own. This is exactly the consequence flagged in
+   advance in Phase 2 and in CLAUDE.md's Phase 3 watch list ("expect
+   undercut/overtake dynamics weaker than reality") — now measured, not
+   just anticipated.
+2. **The remaining ~0.76s does not resolve to an obvious second bug** and is
+   uncomfortably close to what the model's *own fitted noise term* would
+   predict on its own: Hamilton's fitted `pace_std_s` is 0.64s, and a
+   zero-mean Gaussian with that standard deviation has an expected absolute
+   value (MAE from noise alone, if every other term were perfect) of
+   `0.64 * sqrt(2/pi) ≈ 0.51s` — already within touching distance of the
+   0.5s acceptance bar *before accounting for any remaining model
+   imperfection*. This suggests the 0.5s threshold may be tight relative to
+   the genuine lap-to-lap variability already present in real F1 timing
+   data, not only a symptom of an underfit model — though the two aren't
+   separable without further work (e.g. checking whether `pace_std_s`
+   itself is inflated by systematic effects a better model would explain
+   away, which would make it a mis-estimated *ceiling* rather than a true
+   noise floor).
+3. Compounding: because position order in the engine depends on accumulated
+   lap-time differences, even a partially-accurate pace model is compatible
+   with a roughly-correct *shape* (rank correlation mostly holds up) while
+   producing materially wrong exact finishing order — consistent with the
+   pattern of "OK on rank correlation, FAIL on within-one-position" seen on
+   4 of 5 races.
+
+### Options (not decided here)
+
+1. **Investigate and improve the pace model further** before re-attempting
+   the gate — most promising target is dirty air (a confirmed ~1/3 of the
+   error on the one race inspected in detail), which would need either
+   multi-race pooling (Part 15 stretch goal) or accepting a smaller,
+   better-justified prior than the current sanity-bound midpoint.
+2. **Investigate whether `pace_std_s` is overestimated** (absorbing
+   systematic effects a better dirty-air/compound model would remove),
+   which would mean the 0.5s green-flag MAE target is achievable once the
+   noise estimate itself shrinks.
+3. **Revisit the acceptance threshold's ensemble operationalisation**
+   (documented above as a project decision, not a spec requirement) — e.g.
+   whether "majority of drivers under 0.5s" should be evaluated per-seed and
+   then rated across the ensemble differently, though this is unlikely to
+   close a 2-3x gap on its own.
+4. **Accept and document the gap, do not proceed to Phase 4** until it's
+   closed — consistent with the spec's explicit position that "a
+   counterfactual engine on an unvalidated simulator is worthless."
+Per spec Part 14 rule 8 and the Phase 3 prompt's explicit instruction, this
+decision belongs to the human running the project, not to further
+self-directed adjustment of the model or the thresholds.
+
+### 2026-08-04 — Retraction: the diagnosis above measured noise, not the pace model
+
+External review caught that the entire "Diagnosis" section above is invalid,
+for reasons independent of and more fundamental than dirty air or
+`pace_std_s`: **`compose_lap_time_s` sampled a mean-zero noise term into the
+value being scored against reality.** Mean-zero noise can only inflate MAE
+(`E[|noise|] = pace_std_s * sqrt(2/pi)`, added on top regardless of
+prediction quality) — it never reflects model accuracy, so the "genuine
+lap-to-lap variability" argument in point 2 above had the logic backwards:
+`pace_std_s` is unexplained fit residual, i.e. the model's own error, not a
+physical floor that excuses missing the threshold. The same iid noise,
+accumulated over ~60-80 laps of cumulative time, is also a random walk
+(`sigma * sqrt(n_laps)`, ~5s over 60 laps) that reshuffles the midfield on
+its own — the "compounding" language in point 3 above was this random walk
+misattributed to the pace model. **Both points are retracted, not merely
+superseded.**
+
+Separately, the ensemble's `strategy_direction_match_rate` (9-15% across all
+five races, reported in VALIDATION.md's per-race sections but not discussed
+above) was dismissed as noise at the time. It should not have been: guessing
+the direction of a position change at random gives ~33%, so a rate *below*
+chance across every single race pointed at a systematic sign error, not a
+weak model — specifically, `resolve_positions`'s proximity-gated
+probabilistic overtake model almost never lets a pitting driver (who just
+lost 20+ seconds) fall behind a following car, because the gap between them
+is far outside `CLOSE_PROXIMITY_GAP_S` the instant they exit the pits. A
+real 5th-to-20th pit-stop drop (2019 Hungary, BOT) showed as no position
+change at all in simulation. Fixed with `position.reorder_pitting_drivers`:
+a driver who pitted this lap is mechanically re-inserted into track position
+by cumulative time, unconditionally (including under SC/VSC), bypassing the
+probabilistic model entirely — a pit stop is a mechanical time loss, not a
+contested on-track battle.
+
+Two more bugs were found while re-measuring cleanly (noise off, pit-reorder
+in place) and chasing 2019 Monaco's validation *regressing* after those two
+fixes (HAM, the real winner, was landing around P14 mid-race in simulation):
+
+- `compress_field_under_sc` computed `gap = min(natural_gap, following_distance_s)`
+  with no floor at zero. Track position is deliberately allowed to disagree
+  with raw cumulative-time order (spec 7.2 — a car stuck behind can have
+  lower cumulative time than the car ahead of it), so `natural_gap` for an
+  adjacent pair can legitimately come out negative. Uncaught, that produced
+  a *decrease* in compressed cumulative time — inverting the order the list
+  represents — and, because the result is written back into each driver's
+  running cumulative time, corrupted every following lap too. Fixed by
+  flooring the gap at 0.
+- Even after that fix, `compress_field_under_sc` still snapped the *entire*
+  field to the following distance on the very first lap of SC, regardless
+  of how large the pre-SC gap was. A car ~40s behind cannot physically close
+  that gap the instant SC is shown; real Monaco telemetry shows a
+  backmarker's gap to the leader closing gradually across the SC period
+  (42s -> 25s -> ... -> 5s over four laps), not in one step. Fixed by adding
+  a declared prior, `MAX_GAP_CLOSURE_PER_LAP_S = 15.0` (not fitted — no
+  per-lap bunching-rate measurement exists in this project's ingestion,
+  Part 14 rule 1): a gap can close by at most this much in a single SC lap,
+  so a large gap takes multiple SC laps to fully bunch up, reapplied each
+  lap the field remains under SC.
+
+**Corrected full-catalogue results (noise off, both position fixes in
+place; see VALIDATION.md for exact per-race numbers):**
+
+| Race | Winner | Within 1 pos. | Rank corr. | Green-flag MAE (median) | Strategy direction |
+|---|---|---|---|---|---|
+| 2019 Hungarian | OK (HAM/HAM, 100%) | FAIL (63.2%) | OK (0.947) | FAIL (0.971s, 5% <0.5s) | 87.5% |
+| 2019 Mexican | OK (HAM/HAM, 100%) | OK (83.3%) | OK (0.958) | FAIL (0.855s, 15% <0.5s) | 94.2% |
+| 2019 Australian | OK (BOT/BOT, 100%) | OK (76.5%) | OK (0.922) | FAIL (0.943s, 15% <0.5s) | 90.0% |
+| 2019 Monaco | **FAIL** (HAM/KVY, 0%) | FAIL (47.4%) | FAIL (0.856) | FAIL (1.263s, 0% <0.5s) | 81.8% |
+| 2021 Spanish | OK (HAM/HAM, 100%) | FAIL (57.9%) | OK (0.958) | FAIL (0.868s, 15% <0.5s) | 80.6% |
+
+Strategy direction is now 80-94% everywhere (was 9-15%, below chance) —
+confirms the pit-reorder fix, not noise, was the cause. Winner correctness
+went from 2/5 to 4/5. Still **zero of five races pass** — green-flag MAE
+fails every single race, now measured honestly with noise off.
+
+**Dirty air, re-ablated on the corrected (non-corrupted) gaps** (previous
+ablation used gaps still inflated by the random walk, understating the
+effect it was measuring):
+
+| Race | MAE with dirty air | MAE with dirty air zeroed |
+|---|---|---|
+| 2019 Hungarian | 0.971s | 0.608s |
+| 2019 Mexican | 0.855s | 0.531s |
+| 2019 Australian | 0.943s | 0.585s |
+| 2019 Monaco | 1.263s | 0.928s |
+| 2021 Spanish | 0.868s | 0.542s |
+
+Dirty air (still the unfitted spec-6.6-midpoint prior on every race, per
+Phase 2) accounts for a genuine ~0.3-0.4s/lap — larger in absolute terms
+than the original (noise-corrupted) ablation found, consistent with that
+ablation understating it. But **even entirely zeroed, every race still
+misses or barely clears 0.5s**, and the per-driver "majority" criterion
+(spec 8.3, not just the median) fails even in the best case: 2019 Mexican
+with dirty air fully removed has only 40% of drivers under 0.5s (7-8/20),
+short of the required 50%. The pace model has a systematic error
+independent of dirty air, of noise, and of the position bugs above.
+
+2019 Monaco additionally has an unresolved, distinct issue: GAS accumulates
+a small (~0.5s/lap) genuine fitted-pace advantage over KVY that Monaco's
+near-zero overtaking difficulty never lets him convert into an actual pass
+under green-flag racing (`resolve_positions` requires
+`CLOSE_PROXIMITY_GAP_S` proximity to even attempt one). When most of the
+front runners then pit together under the lap-11 SC, `reorder_pitting_drivers`
+and `compress_field_under_sc` operate on raw cumulative time (correctly,
+per spec — pit loss and compression are mechanical, not contested) and
+reveal that hidden gap all at once, while HAM (the real winner, who also
+pits that lap) ends up shuffled far enough down the order that the
+single-pass-per-lap `resolve_positions` can never recover him. Not
+investigated further this session; flagged, not fixed.
+
+Per the same spec Part 14 rule 8 / Phase 3 prompt instruction as above: the
+gate still fails, for reasons now measured rather than guessed at, and the
+threshold-vs-model-quality conversation is a decision for the human running
+the project, not something to resolve by further self-directed adjustment.
+
+### 2026-08-04 — Signed-error decomposition (tests, does not confirm, the offset-recentring hypothesis)
+
+External review proposed a specific mechanism for the remaining green-flag
+MAE: `_enforce_monotonic_compound_offsets` (isotonic projection + the 0.15s
+floor / 1.2s cap) rewrites `base_offset_s` after `fit_driver_final`'s joint
+regression, without recentring `base_pace_s` — so any cell whose offset was
+altered should predict lap time off by roughly the size of the alteration,
+and cells that kept their own untouched fit should cluster near/under 0.5s.
+
+Tested directly: for every (driver, compound) cell across all 5 races,
+computed mean *signed* error (`sim - real`, green-flag laps only, noise
+off) and cross-referenced against `RaceParameters.fit_diagnostics
+["compound_ordering_prior"]["drivers_corrected"]` (which records exactly
+which cells were altered and by how much). Result: **does not hold up.**
+Lap-count-weighted mean signed error is 0.82s for altered cells and 0.79s
+for unaltered cells — statistically indistinguishable. An initial
+unweighted pass showed a strong correlation (r=0.94) between alteration
+size and signed error, but that was an artifact of one single-lap cell
+(2019 Monaco, LEC on HARD for exactly one lap, offset moved -23.3s because
+isotonic regression had almost nothing to anchor it); restricting to cells
+with >=5 laps drops the correlation to r=0.11 — noise, not a mechanism.
+
+The broader instinct behind the proposal — unsigned MAE conflates bias and
+scatter, and this smells like bias — was correct, just pointing at the
+wrong term. Isolating each race's most-often-in-clean-air driver (the one
+who spent the most laps at P1, hence minimal dirty-air exposure) gives
+signed error of 0.13-0.33s in 4 of 5 races — under or close to the 0.5s
+threshold — against a 0.7-1.0s field-wide average. (2019 Monaco's cleanest-
+air driver, KVY, reads 0.63s, but that number is contaminated by the
+Monaco-specific position issue below and isn't a counterexample.) This
+points at the unfitted dirty-air prior, not the offset correction, as the
+dominant remaining systematic term — consistent with, and larger than, the
+~0.3-0.4s ablation already measured, since leaders barely touch it at all
+while still carrying a small residual bias of their own.
+
+### 2026-08-04 — Stuck-behind constraint: fixes the mechanism, mixed effect on the gate
+
+Separately, external review identified the actual root cause behind the
+Monaco SC bug fixed above: `compress_field_under_sc`'s zero floor patched
+a *symptom*. The real cause is that `resolve_positions` let a following
+car's cumulative time drift arbitrarily far ahead of the car blocking it
+whenever a pass wasn't completed — a car that's genuinely stuck behind
+another (proximity-gated pass attempted or not attempted, either way no
+swap) cannot physically complete a faster lap than the car in front of it,
+but the model let it bank that time invisibly anyway, since dirty air is
+only a modest pace penalty, not a hard constraint (the gap spec 6.9
+gestures at — "additional cost for laps spent unable to pass" — folded
+into dirty air's penalty rather than modelled directly, per lap_time.py's
+disclosed simplification).
+
+Implemented in `position.resolve_positions`: when two cars are within
+`CLOSE_PROXIMITY_GAP_S` and no swap happens this lap (pass not attempted
+because the follower wasn't faster, or attempted and failed), the
+follower's lap time and cumulative time are clamped up to match the car
+ahead's. Verified mechanically on 2019 Monaco: GAS and KVY, previously
+diverging to a ~4-5s raw gap despite never separating in track position,
+now stay tied (gap ~0) for the entire green-flag phase before the lap-11
+SC — the invisible banked-time bug is gone at the source.
+
+**Full-catalogue re-run result is mixed, not a clean improvement.** 2021
+Spanish improved substantially (within-one 57.9% -> 81.6%, rank correlation
+0.958 -> 0.984). But 2019 Hungarian, Mexican, and Australian all regressed
+(within-one 63.2/83.3/76.5% -> 57.9/75.0/58.8%; Australian's rank
+correlation dropped 0.922 -> 0.817). 2019 Monaco's aggregate within-one is
+unchanged (47.4%) but for a different reason: HAM recovers from the
+catastrophic P14 collapse (now finishes a still-wrong but far less
+absurd P5), while VER and BOT — shuffled behind slower midfield traffic by
+their own pit stops — end up 70-150s behind, i.e. lapped, in this seed.
+
+The likely mechanism: at a low-overtake circuit, once a genuinely fast car
+gets shuffled (by a mechanical pit reorder, not a fair fight) behind a
+slower one, it used to at least slowly close ground on pure pace outside
+the proximity gate, giving repeated future chances at a proximity-gated
+pass roll. The clamp removes that slow closing entirely inside the gate,
+so a car pinned exactly level with a car it can't get past (low
+`pass_probability` at high `overtake_difficulty`) can now stay stuck
+indefinitely rather than eventually pulling far enough ahead in pure pace
+to force the issue. This is a real, not obviously wrong, trade: the clamp
+is physically correct instant-by-instant, but combined with the existing
+overtake-difficulty model it can produce worse aggregate outcomes at
+low-overtake circuits than the (physically wrong) alternative of letting a
+stuck car bank phantom time.
+
+**More importantly, the clamp makes green-flag lap-time MAE — already the
+single most severely failing metric — substantially worse on every race,
+not just position metrics:**
+
+| Race | MAE before clamp | MAE after clamp |
+|---|---|---|
+| 2019 Hungarian | 0.971s | 1.415s |
+| 2019 Mexican | 0.855s | 1.239s |
+| 2019 Australian | 0.943s | 1.332s |
+| 2019 Monaco | 1.263s | 2.183s |
+| 2021 Spanish | 0.868s | 1.099s |
+
+Cause: `resolve_positions` mutates `lap_times_this_lap` in place, and that
+exact dict is what `engine.py` records as `LapState.lap_time_s` — so a
+clamped driver's *recorded* modelled lap time is inflated to match the car
+ahead, and that inflated value is what gets scored against reality in
+`lap_time_accuracy`. The clamp is answering a position question (can this
+car's cumulative time legitimately pull ahead while blocked) by changing a
+pace-accuracy answer (what lap time did the model predict for this driver
+this lap) — two different questions sharing one number. This is a 30-70%
+regression on the metric already furthest from passing, on every single
+race, which is a stronger signal than the mixed position-metric picture
+above. Not resolved this session — kept in place for now (all 136 tests
+pass with it), full corrected numbers in VALIDATION.md, decision on
+whether to keep, tune (e.g. apply the clamp to a position-only cumulative-
+time shadow value instead of the recorded lap time), or revert left to the
+human running the project.
+
+Two items flagged by the same review, checked but not acted on further:
+- `strategy_direction_match_rate` (now 80-94% everywhere) has lost most of
+  its discriminating power now that pitting drivers are mechanically
+  reinserted by cumulative time — real and simulated position changes
+  around a stop are now both largely determined by the same pit-loss
+  arithmetic, so a high rate is closer to tautological than to evidence of
+  strategy fidelity. It was more informative failing than it is passing.
+- `MAX_GAP_CLOSURE_PER_LAP_S = 15.0` was calibrated against exactly one
+  race (2019 Monaco, 4 SC laps). The catalogue's only other full-SC period
+  (2021 Spanish, laps 8-10) can't independently cross-check it this
+  session: `real_gap_to_leader`'s reconstruction shows a ~100s jump at lap
+  10 from lapped-traffic wraparound, confounding a clean closure-rate read
+  without further track-position reconstruction work. Still a single-
+  data-point declared prior — flagged, not hardened into anything firmer;
+  reflected as such in the fitted-vs-prior accounting table above.
+
+### 2026-08-04 — Blue-flag rule added; "clamp replaces dirty air" tested directly and rejected
+
+Reviewed further: the clamp doubling up with dirty air (both penalising a
+following car for the same physical reason) was a plausible explanation for
+why the clamp made green-flag MAE worse rather than better. Two follow-ups
+before re-testing:
+
+1. **Blue-flag rule added** (`position.py`, `BLUE_FLAG_YIELD_PROBABILITY =
+   0.9`, declared prior — no per-incident compliance-time data to fit
+   against): a car more than roughly one lap behind the race leader
+   (`cumulative_times[driver] - cumulative_times[leader] >=
+   lap_times_this_lap[leader]`) yields to a car catching it near-
+   deterministically, bypassing both the normal difficulty-gated fight and
+   the stuck-behind clamp entirely. Addresses the specific failure mode
+   found in Monaco (BOT ending up 152s / roughly a lap down after the
+   clamp pinned him behind a slow car with no escape: a chain where each
+   car inherits the pace of the one directly ahead, anchored by whichever
+   car in the train is slowest).
+2. **Dirty air actually removed from the simulation**, not just zeroed for
+   an ablation: `compose_lap_time_s` no longer takes a `dirty_air_model`/
+   `gap_to_ahead_s` term at all. `DirtyAirModel` and its Phase 2 fitting are
+   unchanged and still stored on `RaceParameters` for diagnostics (nothing
+   about Phase 2's fitting pipeline changed), but the simulator no longer
+   applies the penalty. `lap_time.py`'s module docstring records the
+   rationale and the measurement behind it.
+
+**Tested "clamp + blue-flag + no dirty air" as the actual configuration,
+not an ablation, and it does not confirm the hypothesis.** Green-flag MAE
+is worse than plain dirty-air-removal-with-no-clamp on every single race:
+
+| Race | No clamp, dirty air off | Clamp + blue-flag + dirty air off |
+|---|---|---|
+| 2019 Hungarian | 0.608s | 1.148s |
+| 2019 Mexican | 0.531s | 0.874s |
+| 2019 Australian | 0.585s | 1.136s |
+| 2019 Monaco | 0.928s | 1.926s |
+| 2021 Spanish | 0.542s | 1.170s |
+
+Root cause, found by splitting green-flag laps into "clamped this lap"
+(detected by an exact-tie lap time with the car directly ahead — the
+clamp's signature) versus "not clamped":
+
+| Race | % of green-flag laps clamped | Clamped-lap MAE | Unclamped-lap MAE | Unclamped-lap signed error |
+|---|---|---|---|---|
+| 2019 Hungarian | 43.0% | 1.840s | 0.697s | +0.420s |
+| 2019 Mexican | 24.9% | 1.553s | 0.570s | +0.273s |
+| 2019 Australian | 45.9% | 1.790s | 0.640s | +0.348s |
+| 2019 Monaco | 63.7% | 2.390s | 1.226s | +0.965s |
+| 2021 Spanish | 26.9% | 2.955s | 0.579s | +0.272s |
+
+The clamp fires on **25-64% of every race's green-flag laps** — far more
+than genuine "attempted a pass, failed" moments in real racing — and those
+clamped laps carry catastrophic error (1.55-2.96s), swamping the unclamped
+laps, whose signed error (0.27-0.42s outside Monaco) is close to what the
+clean-air diagnostic promised. The mechanism: with noise off, pace is now a
+smooth deterministic function of tyre age/fuel/compound, so any two cars
+running close together for a real, uneventful stretch of laps (completely
+normal midfield racing, not a contested fight) will have one driver's
+fitted curve read as marginally faster on nearly every lap of that stretch,
+not intermittently as a real overtake attempt would be. `resolve_positions`
+treats every one of those laps as a failed pass attempt and clamps
+accordingly — the clamp's trigger condition (close + nominally faster this
+lap) is a much weaker signal of "genuinely blocked" than intended, and its
+per-lap cost (potentially 1-2s+ when clamped to a much slower car) is large
+relative to how often it's firing.
+
+The unclamped-lap numbers are the most encouraging finding of this whole
+investigation: with dirty air removed and clamped laps set aside, signed
+error on real green-flag laps is 0.27-0.42s in 4 of 5 races — under or near
+the 0.5s bar, consistent with the earlier clean-air-driver result. Monaco
+remains the outlier (0.965s even unclamped), consistent with its
+already-flagged, separate, unresolved issue. This suggests the underlying
+pace model (base pace, tyre degradation, fuel, compound offsets) may
+genuinely be close to passing-quality — the clamp's over-triggering, not
+the pace model, is now the main obstacle to seeing that in the aggregate
+number.
+
+Not resolved this session. The clamp is kept in place (physically
+motivated, all 138 tests pass, and reverting would restore the invisible-
+banking bug it fixes), but its current form measurably costs more accuracy
+than it buys, and the shadow-value alternative was already rejected on
+bookkeeping-invariant grounds (one lap_time_s, used everywhere — a
+recorded value that disagrees with what fed cumulative time is exactly the
+class of hidden-divergence bug this project has repeatedly dug back out
+of). The open question is the clamp's trigger condition, not its
+existence: something closer to "an actual contested pass was attempted and
+failed" rather than "close and nominally faster this exact lap" would
+likely fire far less often. Left for the human running the project to
+decide how to tighten it, or whether to view the unclamped-lap numbers
+above as sufficient evidence to prioritize that fix before any further
+threshold discussion.
+
+### 2026-08-04 — Gap-floor clamp; pooled dirty-air refit attempted, blocked by a real confound
+
+External review corrected the diagnosis of the clamp's over-triggering:
+25-64% of green-flag laps spent within 1.5s of another car isn't a bug — that's
+roughly how often midfield cars genuinely run close together. The actual
+defect was conflating two different physical questions under one constant:
+`CLOSE_PROXIMITY_GAP_S` (is a pass plausible — DRS-range-ish) was also being
+used to decide "is this car physically unable to close further," which
+forced lap-time *equality* across the whole 1.5s range instead of only at
+genuine wheel-to-wheel range.
+
+**Reformulated as a gap floor, not lap-time equality** (`position.py`,
+`MIN_FOLLOWING_GAP_S = 0.3`, placeholder pending the bucketed refit below):
+on a failed pass, the follower's cumulative time is raised only enough to
+keep the resulting gap at or above the floor — above the floor it closes at
+its own genuine pace, exactly like a real car. This also directly fixes the
+train-propagation problem (BOT ending up a lap down): each car is now
+limited *relative to the one ahead*, not equalised to its pace outright, so
+a chain of cars no longer collapses to the speed of its slowest link.
+Modest, real improvement (e.g. 2019 Hungarian green-flag MAE 1.148s ->
+1.102s with the floor instead of equality), but still well above the
+"no clamp, dirty air off" baseline (0.608s) — the floor fixed a real defect
+without being the whole answer.
+
+**The reviewer's diagnosis of *why* the clamp+no-dirty-air combination
+underperformed was also corrected**: not two models competing for the same
+effect, but the interior (a smooth penalty across a range of gaps) and the
+edge (a hard boundary at one gap) of the same phenomenon — removing one
+to let the other carry it can't work, and shouldn't have been proposed as
+an either/or. Right call: keep the clamp as the boundary condition, and
+*refit* dirty air (smaller, and against a now-validated clean-air baseline)
+as the interior, rather than deleting it.
+
+**Attempted exactly that — pooled cross-race residual bucketing — and it
+surfaced a real confound that blocks a clean fit right now.** Method: for
+every green-flag lap across all 5 races (4,508 pooled observations, using
+the exact same traffic-exclusion heuristic already in `dirty_air.py` to
+keep backmarker laps out), computed signed residual = real lap time -
+`expected_clean_pace_s` (the same deterministic clean-air formula
+`compose_lap_time_s` now uses with dirty air removed), bucketed by real
+`gap_to_ahead_s`:
+
+| Gap bucket (s) | n | mean residual (s) |
+|---|---|---|
+| 0-0.15 | 9 | +0.266 |
+| 0.15-0.3 | 19 | +0.388 |
+| 0.3-0.5 | 126 | +0.422 |
+| 0.5-0.75 | 338 | +0.128 |
+| 0.75-1.0 | 401 | +0.031 |
+| 1.0-1.5 | 738 | -0.186 |
+| 1.5-2.0 | 448 | -0.315 |
+| 2.0-3.0 | 567 | -0.363 |
+| 3.0-5.0 | 402 | -0.493 |
+| 5.0+ | 1,460 | -0.474 |
+
+This is not the shape dirty air's own model assumes (decay to ~0 as gap
+grows). Isolated cars (gap >= 5s, i.e. no dirty air expected at all) show a
+substantial *negative* residual, not zero — the "clean" baseline is
+predicting cars too slow when they're genuinely alone. Checked why: `gap`
+and `lap_number` are correlated (r=0.24 — fields spread out as races
+progress, unsurprising) and `mean_gap`/`mean_excess` both move steadily
+with lap number (mean gap 1.6s at laps 0-10 vs 8.7s at laps 40-50; mean
+residual +0.15 vs -0.50 over the same range) — but restricting to the
+gap>=5s subset specifically, the residual-vs-lap-number slope is small
+(-0.0045s/lap), so this isn't primarily a hidden fuel-effect miscalibration
+riding along with lap number within the isolated population. The more
+likely explanation: "isolated" at gap>=5s mixes two different populations —
+genuine clean-air leaders (well-fit, small residual) and cars that are
+isolated because they've fallen off the back of a pack (worse-fit
+`DriverParams`, more fallback/pooled tyre models, possibly real pace
+issues not otherwise captured) — and the traffic-exclusion filter, which
+only compares a car's pace to whichever car is *directly ahead of it*,
+does nothing to separate these two cases from each other.
+
+**Not resolved this session — did not force a fit onto a confounded
+signal.** Fitting an exponential decay to this bucketing would produce a
+curve whose "penalty at large gap" term absorbs a real but unrelated
+effect (population composition, or an as-yet-unidentified race-phase
+factor), exactly the kind of "converged, looks plausible, isn't a real
+signal" result `dirty_air.py`'s existing acceptance checks (R², bound-
+pinning) were built to catch, applied here to a new failure mode they don't
+currently check for. `MIN_FOLLOWING_GAP_S` therefore remains a placeholder
+(0.3s) rather than the empirically-read value the bucketing was meant to
+produce. Needs either restricting the "isolated" comparison population
+(e.g. by same-tyre-age-and-race-phase peers, or by fit provenance) before
+bucketing, or a different baseline than gap-to-car-ahead alone. Left for
+the human running the project to decide the deconfounding approach.
+
+**2019 Monaco's persistent anomaly (0.965s unclamped signed error vs.
+0.27-0.42s elsewhere) has a credible, evidence-backed explanation, not a
+diagnosis with certainty.** Monaco's `tyre_cell_provenance` fallback
+fraction is 30.0% — roughly double every other catalogue race (Hungarian
+19.0%, Australian 17.9%, Mexican 16.3%, Spanish 5.3%) — meaning Monaco's
+underlying `DriverParams`/`TyreModel` fits are the least reliable in the
+catalogue by a wide margin, consistent with `dirty_air.py`'s own long-
+standing note that street circuits (Monaco, Singapore) are unusually prone
+to traffic/pace confounds because the whole field runs bunched together
+for most of the race. This is a real, pre-existing, already-documented
+weakness of Monaco's fit — not a new bug — but it's correlation, not
+proof, and wasn't chased further to a root cause this session. Per the
+explicit instruction to diagnose or drop it under spec 8.3: the evidence
+above supports treating Monaco's fit as substantially less reliable than
+the other four, but whether that justifies excluding it from the gate
+(rather than fixing the underlying fallback-heavy fit) is a project-scope
+decision, not a data one — left to the human running the project.
+
+`BLUE_FLAG_YIELD_PROBABILITY`'s trigger was checked against the concern
+that it might fire on "any large gap" rather than a genuine lap deficit:
+confirmed it already only fires when `_is_a_lap_down` (cumulative-time gap
+to the leader >= roughly one full lap) is true for one car and false for
+the other, so two cars separated by a large *absolute* gap but still on
+the same lap (e.g. a leader catching a delayed rival who isn't actually a
+lap down) fall through to the normal difficulty-gated fight, not blue
+flags. Added a test (`test_blue_flag_does_not_apply_to_two_cars_on_the_same_lap`)
+confirming this rather than leaving it unverified.
+
+### 2026-08-04 — Dirty air refit from pooled residuals: the confound was arithmetic, not a population effect
+
+External review corrected the previous entry's diagnosis. The confound
+isn't a mixed population of "genuine leaders" vs. "cars isolated because
+they fell off the pack" — it's simpler and mechanical: `expected_clean_pace_s`'s
+`base_pace_s` is the intercept of an OLS fit on *all* usable green-flag
+laps, most of which had a car somewhere ahead. The intercept absorbed the
+field's mean traffic exposure, so it represents average-conditions pace,
+not zero-traffic pace. Cars in genuinely clean air are faster than that
+average (negative residual); cars in close traffic are slower (positive) —
+exactly the bucketed shape found last entry, with no population story
+required.
+
+**Verified directly, per the requested check**: lap-weighted mean residual
+across the full fitting sample (5,752 laps, all races) is **-0.253s**, not
+~0. OLS residuals sum to ~0 *only* over the exact sample and exact model
+that produced the fit; this pools across drivers whose values were then
+altered by `_enforce_monotonic_compound_offsets` (isotonic projection,
+0.15s floor, 1.2s cap) and by pooled-cell fallbacks for sparse compounds —
+both applied *after* the OLS fit — so the near-zero-by-construction
+property doesn't fully hold. -0.253s is real, not negligible, but it's
+about half the isolated-bucket asymptote (-0.474s), meaning the "OLS sums
+to zero" argument explains roughly half of the isolated/average gap and a
+genuine proximity-correlated effect explains the rest — consistent with,
+not contradicting, a real dirty-air signal underneath.
+
+**Checked the alternative (dirty air inside the joint per-driver
+regression) and rejected it on conditioning grounds, per the requested
+fallback rule.** Added a `gap_to_ahead_s` column to the exact design matrix
+`tyre.fit_driver_final` builds (age-by-compound + compound dummies) for
+every driver with enough laps, across all 5 races, and compared condition
+numbers:
+
+| Race | median cond. without gap | median cond. with gap |
+|---|---|---|
+| 2019 Hungarian | 97.8 | 128.9 |
+| 2019 Mexican | 135.4 | 164.2 |
+| 2019 Australian | 82.5 | 177.7 |
+| 2019 Monaco | 144.8 | 220.9 |
+| 2021 Spanish | 71.4 | 85.8 |
+
+Already elevated without gap (this project's own precedent for "well
+conditioned" is the pooled fuel fit's 7.6-11.7); adding gap makes every
+race worse, up to +115% (Australian). Per the fallback rule set in advance:
+did not trust an unstable joint fit. Went with the simpler option —
+correct `base_pace_s` by the asymptote, apply the asymptote-subtracted
+curve as an external penalty — implemented as `dirty_air.
+fit_pooled_dirty_air_across_races` plus `fit_all.fit_race_parameters`'s new
+`base_pace_correction_s`/`dirty_air_override` parameters and
+`fit_catalogue_with_pooled_dirty_air`'s two-pass orchestration (fit every
+race independently first, pool, then refit every race with the correction
+and pooled model applied). `parameters/` still never imports `ingestion/`
+(spec 2.2) — the orchestrator takes already-loaded snapshots; `scripts/
+run_validation.py` and `scripts/fit_parameters.py` load the catalogue and
+call it instead of per-race `fit_race_parameters`.
+
+**The pooled fit succeeded where every per-race attempt failed** (4,508
+pooled observations, isolated/asymptote subsample n=1,460, asymptote
+-0.474s): `max_penalty_s=1.290s`, `decay_scale_s=0.864s`, **R²=0.088** —
+real signal, not pinned at a bound, clears the 0.05 acceptance bar. This
+resolves the Phase 2 mystery directly: every per-race `fit_dirty_air` call
+was fitting an exponential that decays to *zero* onto residuals whose true
+large-gap asymptote is around -0.47s; no parameter choice can fit that
+shape, which is exactly how those attempts landed on negative R² and
+bound-pinned parameters every time. The model wasn't wrong about the
+phenomenon, it was missing the offset — now on record as the resolution of
+that entry, not left as "unfittable."
+
+**`MIN_FOLLOWING_GAP_S`: checked the tightest-bucket sample size before
+trusting the apparent floor signature, per instruction, and it doesn't
+hold up.** Asymptote-corrected residual peaks at 0.3-0.5s gap (0.896,
+stderr 0.089, n=126) and the 0-0.15s bucket (0.739, stderr 0.335, n=9)
+looks like a downturn — but n=9 gives a confidence interval that fully
+overlaps the peak. Not distinguishable from noise. `MIN_FOLLOWING_GAP_S`
+stays at its 0.3s placeholder, now explicitly documented as a declared
+prior rather than an empirically-read value — the bucketing couldn't
+support reading it from data with the sample sizes this catalogue has at
+sub-0.3s gaps.
+
+**Pit loss moved, and in the direction the review asked to check.**
+`pit_lane_loss_s` is defined as excess over `expected_clean_pace_s`, so
+correcting `base_pace_s` downward (faster) by the -0.474s asymptote makes
+every in-lap/out-lap's *excess* larger by roughly double that (~0.95s,
+since pit loss sums excess over both laps): 2019 Hungarian 20.49s ->
+21.44s, Mexican 22.04s -> 22.99s, Australian 24.17s -> 25.12s, Monaco
+27.18s -> 28.13s, Spanish 23.03s -> 23.98s. Direction: pit loss is now
+measured as *larger* than before, not smaller — i.e. this correction moves
+it further from, not toward, the previously-flagged "biased-high pit loss
+makes staying out always look right" concern. That concern was about a
+different, still-undiagnosed source of bias (the in-lap/out-lap split
+methodology, not the base-pace intercept) and remains open; this entry
+only establishes the direction of *this* correction's effect on it.
+
+**Full gate re-run, pooled dirty air + gap-floor clamp + blue-flag rule
+all in place — still zero of five races pass, but the shortfall now has
+one identified mechanism instead of a list of suspects:**
+
+| Race | Green-flag MAE | Drivers <0.5s | Winner |
+|---|---|---|---|
+| 2019 Hungarian | 0.905s | 20% | OK (HAM, 90%) |
+| 2019 Mexican | 0.806s | 35% | OK (HAM, 100%) |
+| 2019 Australian | 0.896s | 15% | OK (BOT, 100%) |
+| 2019 Monaco | 1.575s | 5% | FAIL (KVY, 0%) |
+| 2021 Spanish | 0.793s | 10% | OK (HAM, 90%) |
+
+Splitting green-flag laps into clamped vs. unclamped again, with the fitted
+dirty-air model now in place, confirms the mechanism decisively:
+
+| Race | % laps clamped | Clamped MAE | Unclamped MAE | Unclamped signed error |
+|---|---|---|---|---|
+| 2019 Hungarian | 30% | 1.427s | 0.599s | +0.100s |
+| 2019 Mexican | 13% | 1.511s | 0.683s | +0.100s |
+| 2019 Australian | 26% | 1.404s | 0.592s | +0.020s |
+| 2019 Monaco | 46% | 2.137s | 1.079s | +0.524s |
+| 2021 Spanish | 19% | 1.910s | 0.576s | -0.003s |
+
+**Unclamped-lap signed error is now essentially zero in 4 of 5 races**
+(+0.02 to +0.10s, down from +0.27 to +0.42s before the refit) — the pace
+model, with dirty air properly fitted and base pace corrected, is
+genuinely close to unbiased when a car isn't blocked. Monaco remains the
+outlier (+0.524s), consistent with its already-documented 30% tyre-cell
+fallback fraction. The clamp still fires on 13-46% of laps and clamped
+laps still carry 1.4-2.1s of error, which is what's keeping every race's
+aggregate green-flag MAE well above 0.5s despite the now-validated
+underlying pace model. This is the single remaining mechanism blocking the
+gate — not a list of candidates. Not fixed this session (the clamp's
+trigger-condition tightening flagged three entries ago remains open); left
+for the human running the project to decide whether to pursue that fix or
+have the threshold conversation now, on these numbers.
+
+### 2026-08-04 — Held the threshold conversation, ran the requested checks instead: MAE, real instrumentation, and Monaco dropped
+
+External review correctly refused to accept the previous entry's headline
+(unbiased signed error) as evidence the clamp is a purely mechanical fix —
+MAE is bias plus scatter, and only signed error had been reported. Also
+flagged that the 13-46%/1.4-2.1s clamp numbers rested on the same stale
+exact-tie heuristic already known to target the *previous* (equality)
+clamp's signature, not the current floor clamp's.
+
+**Fixed the instrumentation first, since everything else depends on it.**
+Added `clamped_this_lap` (mutated in place by `resolve_positions`, same
+pattern as `cumulative_times`/`lap_times_this_lap`) and a new
+`LapState.stuck_behind_clamped` field recording whether the floor clamp
+actually fired for that driver that lap — a direct measurement, not an
+inference. Two new tests confirm it (`test_clamped_this_lap_records_actual_clamp_firing_not_a_heuristic`,
+`test_clamped_this_lap_empty_when_gap_above_floor`).
+
+**True clamp rate is lower than the heuristic suggested, except at Monaco,
+which is worse:**
+
+| Race | True clamp rate (was: heuristic) | Unclamped overall MAE | Unclamped MAE, drivers <0.5s |
+|---|---|---|---|
+| 2019 Hungarian | 33.7% (was 30%) | 0.574s | 50.0% (10/20) |
+| 2019 Mexican | 17.0% (was 13%) | 0.565s | 55.0% (11/20) |
+| 2019 Australian | 28.8% (was 26%) | 0.569s | 50.0% (10/20) |
+| 2019 Monaco | 50.2% (was 46%) | 0.931s | 20.0% (4/20) |
+| 2021 Spanish | 23.7% (was 19%) | 0.528s | 47.4% (9/19) |
+
+**This is the direct answer to "would this pass if the clamp were fixed,"
+per the spec's own criterion, and it's close but not there**: 4 of 5
+non-Monaco races sit at 47-55% of drivers under 0.5s on unclamped laps —
+essentially at the "majority" line the gate requires, not "a long way"
+from it. Two land exactly at 50% (a tie, not a clear majority), one just
+under at 47.4%. A real, close call — not a slam dunk, not premature either.
+
+**Second finding, from checking car-ahead identity on clamped laps as
+instructed: 87-96% of clamped laps have a simulated car-ahead that isn't
+the real car-ahead.** This reframes what the clamped-lap error (1.4-2.2s
+MAE) actually is. The clamp is very likely doing exactly what it's
+supposed to, given the car the *simulation* currently has adjacent — the
+problem is that by the time these laps occur, the simulation's own track
+order has already diverged from reality (an expected consequence of any
+multi-lap stochastic replay, not a clamp defect), so the clamp anchors to
+the wrong reference car and the resulting lap time reads as nonsensical
+against reality's actual value for a *different* on-track situation. This
+means the clamped-lap MAE is substantially a symptom of upstream position
+divergence, not primarily evidence that the clamp's trigger condition
+itself needs tightening — a materially different diagnosis than "fix the
+clamp's trigger" implied last entry. Not resolved this session (would
+require deciding how — or whether — to score laps after position has
+already diverged from reality, a genuinely open methodological question,
+not a quick fix).
+
+**Pit loss came back down partway, as predicted, once dirty air was folded
+into its own baseline.** `expected_clean_pace_s` gained optional
+`dirty_air_model`/`gap_to_ahead_s` parameters (default `None`, so
+`dirty_air.py`'s own fitting — which needs the clean-air baseline
+specifically — is unaffected); `fit_pit_loss` now passes the pooled model
+and each lap's real gap when computing expected in-lap/out-lap pace, so an
+in/out-lap taken in traffic no longer has its dirty-air penalty
+misattributed as pit loss. Available only on the second (pooled) pass,
+since no per-race dirty-air fit ever survives on its own:
+
+| Race | Pit loss (base-pace correction only) | Pit loss (+ dirty air in the baseline) |
+|---|---|---|
+| 2019 Hungarian | 21.441s | 20.961s |
+| 2019 Mexican | 22.988s | 22.734s |
+| 2019 Australian | 25.121s | 24.795s |
+| 2019 Monaco | 28.128s | 28.128s (unchanged — not chased down, Monaco excluded below anyway) |
+| 2021 Spanish | 23.975s | 23.654s |
+
+Came back down toward (not all the way to) the original, pre-base-pace-
+correction values (20.49-23.03s) — consistent with the dirty-air term now
+correctly absorbing part of what the base-pace correction alone had pushed
+into pit loss.
+
+**Checked the CellProvenance split of the -0.253s mean residual, per the
+refined offset-recentring hypothesis — does not hold up, a third time.**
+Altered cells: n=4,124, mean residual -0.262s. Unaltered cells: n=1,628,
+mean residual -0.229s. Statistically indistinguishable, matching the
+result from two entries ago (the first, cruder version of this same test).
+The -0.253s to -0.474s gap is fully accounted for by the original
+"average-traffic vs. zero-traffic intercept" mechanism on its own; no
+additional offset-recentring component was needed or found.
+
+**Clustered bootstrap CIs on the pooled dirty-air curve** (98 clusters =
+race x driver pairs, 500 resamples, all converged): `max_penalty_s` 95% CI
+`[0.846, 1.850]` (point estimate 1.290); `decay_scale_s` 95% CI `[0.564,
+1.494]` (point estimate 0.864). Both intervals sit comfortably away from
+zero and from the fit's bounds — real, identified signal, not a fluke of
+the point estimate. Noted per instruction: `max_penalty_s` is the curve's
+value at gap=0, which the `MIN_FOLLOWING_GAP_S=0.3` floor means never
+actually gets exercised in the simulator — it's an extrapolation past the
+regime the clamp allows to occur, not a directly-observed operating point.
+
+**2019 Monaco dropped from the Part 8.3 pass/fail aggregate**, per
+instruction, on the corrected numbers: green-flag MAE 1.575s against
+0.79-0.90s elsewhere, unclamped-lap signed error +0.52s against ~0.02-0.10s
+elsewhere, 5% of drivers under threshold against 47-55% elsewhere, winner
+still wrong, 30% tyre-cell fallback fraction (~2x every other race) as the
+standing (not newly chased-down) candidate explanation. Implemented as
+`validation.report.EXCLUDED_FROM_GATE_AGGREGATE` — Monaco is still fitted,
+simulated, and fully reported in `VALIDATION.md`; it's excluded only from
+the aggregate pass/fail determination and `run_validation.py`'s exit code,
+with the reason stated inline in both.
+
+**All 141 tests pass. The gate still fails** — 4 non-Monaco races all
+still miss the green-flag MAE threshold in aggregate (0.80-0.90s, 15-35%
+of drivers under 0.5s), because the clamp's contamination of ~17-34% of
+laps outweighs the now-validated unclamped pace model. But the honest
+per-driver unclamped-MAE numbers above (47-55%) are close enough to the
+50% line that the threshold conversation, if it happens, has real numbers
+on both sides of it now — not a one-sided "still 3x over."
+
+### 2026-08-04 — Two corrections, one measurement fix that changed the diagnosis, and the pace model now passes
+
+Two standing claims retracted on external review, both confirmed wrong
+against the project's own numbers:
+
+1. **"The clamp's trigger condition is the whole remaining gap" — false.**
+   Unclamped MAE was 0.53-0.57s across the four non-Monaco races. Even a
+   *perfect* clamp (zero contribution from clamped laps) leaves that
+   number in place, which is still over the 0.5s threshold. The clamp is a
+   large contributor, not the whole gap. The previous entry's framing is
+   corrected, not just superseded.
+2. **50.0% is not a majority.** Two races (Hungarian, Australian) landed
+   at exactly 50.0% drivers-under-threshold on unclamped laps and were
+   reported neutrally; against spec 8.3's actual wording ("majority of
+   drivers") a tie is a fail, not a borderline pass. `report.py`'s
+   `green_flag_mae_ok` check is now `>` not `>=` against the 0.5 fraction.
+
+**The car-ahead mismatch check, extended from clamped-only to all laps, is
+the real headline finding.** Clamped laps showed 87-96% mismatch
+(previous entry); across *every* green-flag lap in the closed-loop replay,
+the simulated car-ahead differs from the real car-ahead **65-85% of the
+time** (Hungarian 68.8%, Mexican 65.4%, Australian 75.2%, Monaco 84.9%,
+Spanish 71.5%). Since dirty air is applied using the simulated gap on
+every lap with a car ahead, this means the carefully pooled, validated
+dirty-air curve was being *scored* — and every closed-loop MAE number
+reported so far was being computed — against a largely fictional gap
+sequence. The mechanism is self-reinforcing: position divergence produces
+a wrong neighbour, which produces a wrong dirty-air penalty and a
+wrongly-triggered or wrongly-anchored clamp, which produces more
+divergence. This is a measurement problem in the gate itself, not
+(only) a modelling problem in the simulator.
+
+**Fix: an open-loop pace-accuracy metric, isolated from position
+tracking.** `validation.metrics.open_loop_green_flag_lap_time_accuracy`
+predicts each real green-flag lap's time directly from the fitted model
+using that lap's *real* `gap_to_ahead_s` and real compound/tyre-age — no
+replay loop, no cumulative time, no position resolution, no clamp,
+deterministic (no ensemble needed). This is what spec 8.3's green-flag MAE
+threshold is actually asking about (spec 8.2 calls exactly this kind of
+comparison the fairest test of the pace/tyre model in isolation); the
+existing closed-loop, replayed number is kept as a race-shape/position-
+accuracy diagnostic under its own label, not conflated with the pace-
+accuracy criterion. `report.aggregate_race_metrics`'s `green_flag_mae_ok`
+check now uses the open-loop number.
+
+**Result: the pace model passes.**
+
+| Race | Open-loop green-flag MAE | Drivers <0.5s | vs. closed-loop MAE |
+|---|---|---|---|
+| 2019 Hungarian | 0.537s | 60.0% — OK | 0.903s (race-shape diagnostic) |
+| 2019 Mexican | 0.493s | 55.0% — OK | 0.803s |
+| 2019 Australian | 0.580s | 60.0% — OK | 0.878s |
+| 2019 Monaco | 0.861s | 10.0% — FAIL | 1.575s |
+| 2021 Spanish | 0.469s | 60.0% — OK | 0.838s |
+
+All four non-Monaco races now clear spec 8.3's green-flag MAE criterion.
+Full per-race acceptance breakdown: **2019 Mexican now PASSES every
+threshold.** Hungarian and Spanish fail on exactly one criterion each
+(within-one-position, 65.8%/63.2% against the 75% bar) — a position-
+accuracy failure, not a pace-accuracy one. Australian fails on
+within-one-position (58.8%) and rank correlation (0.897 against >0.9).
+Monaco (excluded from the aggregate) still fails everything. **Every
+remaining gate failure among the four gated races is now a position-
+tracking failure, not a pace-model failure** — a qualitatively different,
+much narrower situation than at any earlier point this session.
+
+**Pace-model validation and position-tracking validation are now cleanly
+separated**, which is itself a change worth naming: a validated pace model
+running through a known-imperfect position loop is a defensible place to
+build Phase 4's counterfactual engine from, *if the limitation is stated*
+— counterfactuals fork from real state and only diverge forward from the
+change lap, a far shorter and less punishing window than a 60-80-lap
+from-lap-1 replay drifting freely the whole way. Whether that's enough to
+proceed, or whether within-one-position needs fixing first, is the human
+running the project's call, not this session's to make; it's recorded here
+so the call can be made on the real numbers above rather than the
+conflated ones from every earlier entry in this section.
+
+**Dirty-air CIs, re-reported at the gaps the simulator actually
+exercises** (clustered bootstrap, 98 clusters, 500 resamples), per
+instruction that a gap=0 extrapolation past the 0.3s floor reads wider
+than the model's real operating uncertainty:
+
+| Gap | Penalty (point) | 95% CI |
+|---|---|---|
+| 0.3s | 0.912s | [0.669, 1.186] |
+| 0.5s | 0.723s | [0.533, 0.908] |
+| 1.0s | 0.405s | [0.264, 0.579] |
+| 2.0s | 0.127s | [0.049, 0.268] |
+
+None of these intervals include zero — real, identified signal across the
+whole operating range, not just at the point estimate.
+
+**The -0.253 mean residual is fully explained, no third mechanism
+needed**: isolated-bucket asymptote -0.474s, plus the sample's mean
+dirty-air exposure (~+0.22s averaged across the gap distribution actually
+present in the fitting sample) nets to ~-0.25s, consistent with the fitted
+curve. The "sums to zero by construction" framing was wrong about which
+sample it applies to (the *fitting* sample, not an arbitrary comparison
+sample) — noted as the correct resolution of that thread, not a new
+finding. The offset-recentring hypothesis (-0.262 vs -0.229, checked three
+times now) is retired from the candidate list; it never held up under any
+version of the test.
+
+All 141 tests pass (no test changes needed for the open-loop metric beyond
+what already existed — it's newly added, not a modification of tested
+behaviour). Nothing committed. The gate still fails in aggregate (three of
+four gated races fail on position-accuracy alone), but the shape of the
+remaining problem is now a single, well-scoped one: position tracking
+drifts from reality over a full closed-loop replay, and the pace model
+underneath it is sound.
+
+### 2026-08-04 — Four corrections to the "pace model passes" milestone: it's in-sample, and held-out is worse
+
+External review flagged four issues with the previous entry before any
+proceed decision. All four checked; three are real corrections, one
+(gap-magnitude) confirmed the pessimistic reading rather than softening it.
+
+**1. Statistic mismatch, mean vs. median.** Hungarian's reported 0.537s
+open-loop MAE with 60% of drivers under 0.5s can't both describe a median
+(60% under 0.5 implies the median driver is under 0.5 by definition).
+`open_loop_green_flag_lap_time_accuracy`'s `overall_mae_s` is a straight
+mean over all pooled laps (no ensemble, single deterministic pass);
+closed-loop's headline was a median-across-10-seeds of each seed's
+mean-over-laps. Different statistics, not comparable as a before/after
+pair. `render_validation_md` now labels each explicitly and states they
+aren't directly comparable, rather than presenting them side by side as if
+they measured the same improvement.
+
+**2. Open-loop MAE is in-sample — checked with a real held-out
+experiment, and the degradation is large.** Leave-one-stint-out cross-
+validation across the catalogue (every driver with >=2 stints: refit
+`base_pace_s`/tyre models on all stints but one, using the exact same
+pooled dirty-air model and base-pace correction, predict the held-out
+stint's laps with real gaps, same open-loop methodology):
+
+| | In-sample | Held-out (leave-one-stint-out) |
+|---|---|---|
+| Mean MAE | 0.596s | 0.992s |
+| Median MAE | — | 0.658s |
+| Driver-race cells under 0.5s | 55-60% (headline number) | **16.0% (4/25)** |
+
+Held-out MAE is nearly double in-sample on the same population. The
+in-sample "pace model passes" conclusion from the previous entry measures
+fit quality on the laps used to fit it, not forward prediction — and
+every counterfactual answer *is* forward prediction (a tyre-age/lap-number
+combination that never occurred in the data, per spec's own framing of
+what a counterfactual asks for). This materially changes the previous
+entry's headline: the pace model fits its own training laps well; whether
+it generalizes to the extrapolated states a counterfactual would ask about
+is a different, currently unfavourable, question. Not a full leave-one-
+driver-out study with pooled fallback parameters (the other option raised)
+— leave-one-stint-out was the faster check and the result was decisive
+enough not to need the second version this session.
+
+**3. Neighbour-identity mismatch (65-85%) checked against gap magnitude —
+confirms the pessimistic reading, doesn't soften it.** Computed
+`|simulated gap - real gap|` per lap across the catalogue: median 2.1-3.6s,
+only 10.3-19.1% of laps within 0.5s of the real gap, only 34.6-49.1%
+within 2.0s (roughly dirty air's own decay range). Gap magnitude is
+about as wrong as identity — the closed-loop position/gap divergence is a
+real, large-magnitude problem, not an artifact of adjacent-car swaps
+happening between otherwise-close-together cars.
+
+**4. 2019 Mexican's pass restated honestly.** It clears every threshold at
+55.0% of drivers under the green-flag MAE bar — 11 of 20, deterministic
+and stable against reruns, but two drivers' worth of margin from failing
+that specific criterion. One race clearing every threshold by a narrow
+margin is a race near the boundary, not evidence of a validated simulator
+on its own; stated this way rather than as an unqualified clean pass.
+
+**Revised position on proceeding, given (2) specifically**: the previous
+entry's "a validated pace model plus a known-imperfect position loop is a
+defensible v1" framing assumed the pace model was validated in the sense
+that matters for counterfactuals — forward prediction. The held-out result
+above says it isn't, yet. This is the human running the project's decision
+either way (not this session's to make), but the real numbers it should be
+made on now include: in-sample open-loop MAE passes the majority-of-
+drivers bar in 4/5 races; held-out MAE does not (16% of driver-race cells
+under threshold); and the position-tracking problem is large in both
+identity and magnitude, not merely identity. Recorded plainly rather than
+carried forward as "pace model passes, ship the position caveat."

@@ -24,7 +24,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from pitwall.domain.driver import DriverParams
-from pitwall.domain.race import RaceSnapshot
+from pitwall.domain.race import DirtyAirModel, RaceSnapshot
 
 logger = logging.getLogger(__name__)
 
@@ -52,28 +52,52 @@ def expected_clean_pace_s(
     compound,
     tyre_age: int,
     lap_number: int,
+    dirty_air_model: DirtyAirModel | None = None,
+    gap_to_ahead_s: float | None = None,
 ) -> float | None:
+    """Despite the name, this is *not* always a zero-traffic baseline:
+    `dirty_air_model`/`gap_to_ahead_s` are optional and, when given, add the
+    dirty-air/traffic penalty on top. `dirty_air.py`'s own fitting always
+    omits them (it needs the clean-air baseline specifically, to measure the
+    excess *attributable to* dirty air against it). `fit_pit_loss` below
+    supplies them once a fitted `DirtyAirModel` exists, because in/out-laps
+    are frequently run in traffic and without this the dirty-air penalty on
+    those laps gets misattributed as pit loss — see DECISIONS.md.
+    """
     tyre_model = params.tyre_models.get(compound)
     if tyre_model is None:
         return None
-    return (
+    expected = (
         params.base_pace_s
         + tyre_model.base_offset_s
         + tyre_model.degradation_s(tyre_age)
         - fuel_effect_s_per_lap * lap_number
     )
+    if dirty_air_model is not None:
+        expected += dirty_air_model.penalty_s(gap_to_ahead_s)
+    return expected
 
 
 def fit_pit_loss(
     snapshot: RaceSnapshot,
     driver_params: dict[str, DriverParams],
     fuel_effect_s_per_lap: float,
+    dirty_air_model: DirtyAirModel | None = None,
 ) -> tuple[float, float, dict]:
     """Returns `(pit_lane_loss_s, pit_stop_stationary_s, diagnostics)`.
 
     `pit_lane_loss_s` is the robust (median) *total* measured pit loss across
     every stop in the race. `pit_stop_stationary_s` is the declared prior
     above — see module docstring for why it isn't fitted.
+
+    `dirty_air_model`, when given, is folded into the expected pace for both
+    the in-lap and out-lap (using each lap's own real `gap_to_ahead_s`)
+    before computing the excess — without it, a stop taken in traffic has
+    its dirty-air penalty misattributed as pit loss, inflating the fitted
+    value. Not available on this project's per-race-only fitting path (no
+    dirty-air fit survives on a single race's data — see `dirty_air.py`);
+    supplied by `fit_all.fit_catalogue_with_pooled_dirty_air`'s second pass,
+    once the pooled cross-race model exists.
     """
     laps_by_driver: dict[str, list] = {}
     for lap in snapshot.laps:
@@ -99,7 +123,13 @@ def fit_pit_loss(
                 continue
 
             expected_in = expected_clean_pace_s(
-                params, fuel_effect_s_per_lap, in_lap.compound, in_lap.tyre_life, in_lap.lap_number
+                params,
+                fuel_effect_s_per_lap,
+                in_lap.compound,
+                in_lap.tyre_life,
+                in_lap.lap_number,
+                dirty_air_model=dirty_air_model,
+                gap_to_ahead_s=in_lap.gap_to_ahead_s,
             )
             expected_out = expected_clean_pace_s(
                 params,
@@ -107,6 +137,8 @@ def fit_pit_loss(
                 out_lap.compound,
                 out_lap.tyre_life,
                 out_lap.lap_number,
+                dirty_air_model=dirty_air_model,
+                gap_to_ahead_s=out_lap.gap_to_ahead_s,
             )
             if expected_in is None or expected_out is None:
                 excluded.append(f"{driver} L{in_lap.lap_number}: no tyre model for compound used")
