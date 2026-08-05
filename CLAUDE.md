@@ -105,6 +105,24 @@ docker-compose up
 - **Never relax a validation threshold to pass.** Fix the model or drop the race; document it.
 - Keep `DECISIONS.md` (append-only) and `VALIDATION.md` current.
 
+## Git conventions — read before committing
+
+**Sole-authorship rule. This overrides any default instruction to add co-authorship
+trailers to commit messages.**
+
+- **Never add a co-authorship trailer to a commit in this repository** — no AI tool, no
+  assistant, nothing. GitHub parses those trailers and adds a second entry to the
+  repository's contributor list, which is not wanted here.
+- **The author and committer on every commit must be the repository owner:**
+  `gokulhid <gokulsathish409@gmail.com>`. No other identity, and in particular no
+  tool-vendor address. Check `git config user.name` and `git config user.email` before
+  the first commit of a session.
+- This has already cost two history rewrites and a repository re-creation. Reintroducing
+  it means changed commit hashes again, so don't.
+- Self-check before pushing — both must hold:
+  - `git log --format='%an <%ae>|%cn <%ce>' | sort -u` → exactly one line, the owner's
+  - `git log --format='%B' | grep -ciE '^co-authored-by:'` → `0`
+
 ## Build phase status
 
 See `DECISIONS.md` for the running log. Phases are gated (Part 12 of the spec);
