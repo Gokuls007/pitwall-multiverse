@@ -71,7 +71,24 @@ export default function Classification({ rows, focusDriver, nRuns }: Classificat
               Driver
             </th>
             <th scope="col" className="rule-b py-1 pr-3 text-left font-normal">
-              Alternate — finishing position across the ensemble
+              <span className="block">Alternate — finishing position across the ensemble</span>
+              {/* Label the scale once, so a bar's horizontal position is
+                  readable as a position rather than guessed at. */}
+              <svg width={BAR_W} height={9} aria-hidden="true" className="mt-0.5 block">
+                {[1, ...Array.from({ length: Math.floor(span / 5) }, (_, k) => (k + 1) * 5)].map((pos) => (
+                  <text
+                    key={pos}
+                    x={(pos - minPos) * cellW + cellW / 2}
+                    y={8}
+                    textAnchor="middle"
+                    fontSize={7.5}
+                    fill="#1A1917"
+                    opacity={0.4}
+                  >
+                    P{pos}
+                  </text>
+                ))}
+              </svg>
             </th>
             <th scope="col" className="rule-b py-1 text-right font-normal">
               Modal
@@ -96,6 +113,24 @@ export default function Classification({ rows, focusDriver, nRuns }: Classificat
                       .map(([p, n]) => `P${p} in ${Math.round((n / row.nRuns) * 100)}% of runs`)
                       .join(", ")
                   }>
+                    {/* A faint full-width track and every-fifth-position
+                        rules. Without them a front-runner's two cells read as
+                        a smudge in an empty column; with them the same marks
+                        read as "landed at the far left of a 20-position
+                        scale", and the diagonal down the table becomes
+                        legible as the alternate order tracking the real one. */}
+                    <rect x={0} y={0} width={BAR_W} height={12} fill="#EFEBE2" />
+                    {Array.from({ length: Math.floor(span / 5) }, (_, k) => (k + 1) * 5).map((step) => (
+                      <line
+                        key={`grid-${step}`}
+                        x1={step * cellW}
+                        x2={step * cellW}
+                        y1={0}
+                        y2={12}
+                        stroke="#DCD6CA"
+                        strokeWidth={0.5}
+                      />
+                    ))}
                     {Object.entries(row.distribution).map(([pos, count]) => {
                       const share = count / row.nRuns;
                       const x = (Number(pos) - minPos) * cellW;

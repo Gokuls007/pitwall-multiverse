@@ -140,6 +140,15 @@ interesting question in that race *is* 17 laps beyond the evidence.
 real, permanent time. That's tracked in its own field so a confidence band on a gap reports
 pace uncertainty only, rather than silently mixing in "how much traffic did this car hit."
 
+**A concrete miss, since a general caveat is cheaper than an example.** In the Hungary
+counterfactual, Bottas really finished P8 — the model puts him at P10 in 83% of its 60
+runs. It is not uncertain about him; it is *confidently wrong*. The Classification panel
+shows the full spread per driver rather than one alternate order specifically so that
+distinction is visible: a tight distribution in the wrong place looks different from a
+wide one, and only the first tells you the model has a systematic problem with that car.
+If every panel showed a single order this would have rendered as a flat "P10" and read as
+an answer.
+
 ---
 
 ## Fitted vs. declared prior
