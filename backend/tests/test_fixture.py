@@ -121,3 +121,53 @@ def test_fixture_stints_carry_real_tyre_ages_not_stint_length(fixture):
         "no stint's real end-age differs from its lap count, so this guard couldn't "
         "detect age being re-derived from stint length"
     )
+
+
+def test_real_pit_lap_is_the_minimum_extrapolation(fixture):
+    """The DecisionPanel's teaching claim, pinned as a data property.
+
+    Reality is the zero-extrapolation point *by construction*: observed tyre
+    ages are definitionally what happened, so every counterfactual leaves the
+    evidence somewhere. Shifting a stop lengthens one stint and shortens
+    another, which means there is no "safe direction" -- an earlier stop
+    over-extends the following stint, a later one over-extends the current.
+
+    This was asserted the other way round at one point (earlier = safe) and
+    the candidate table falsified it, so it is a test now rather than a
+    comment.
+    """
+    candidates = fixture["counterfactual"]["candidates"]
+    assert candidates
+
+    real = [c for c in candidates if c["isReal"]]
+    assert len(real) == 1, "expected exactly one candidate marked as the real pit lap"
+    assert real[0]["beyondEvidenceLaps"] == 0, (
+        "the real pit lap must require zero extrapolation -- observed tyre ages come "
+        "from precisely that strategy"
+    )
+
+    minimum = min(c["beyondEvidenceLaps"] for c in candidates)
+    assert real[0]["beyondEvidenceLaps"] == minimum
+
+    # Both directions must climb: this is the V, and it's what makes "no safe
+    # direction" true rather than rhetorical.
+    real_lap = real[0]["newLap"]
+    earlier = [c for c in candidates if c["newLap"] < real_lap]
+    later = [c for c in candidates if c["newLap"] > real_lap]
+    if earlier:
+        assert max(c["beyondEvidenceLaps"] for c in earlier) > 0, "pitting earlier should extrapolate"
+    if later:
+        assert max(c["beyondEvidenceLaps"] for c in later) > 0, "pitting later should extrapolate"
+
+
+def test_extrapolation_grows_monotonically_away_from_the_real_lap(fixture):
+    """Within each arm the exposure should grow steadily, not jump around --
+    that monotonicity is what makes dragging the slider legible as a gradient
+    rather than noise."""
+    candidates = {c["newLap"]: c for c in fixture["counterfactual"]["candidates"]}
+    real_lap = next(c["newLap"] for c in candidates.values() if c["isReal"])
+
+    earlier = [candidates[lap] for lap in sorted(candidates) if lap < real_lap]
+    for nearer, further in zip(earlier[1:], earlier, strict=False):
+        # Walking back toward the real lap, exposure must not increase.
+        assert nearer["beyondEvidenceLaps"] <= further["beyondEvidenceLaps"]
