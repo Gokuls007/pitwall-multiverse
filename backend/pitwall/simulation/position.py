@@ -31,12 +31,23 @@ from pitwall.simulation.overtake import pass_probability, resolve_pass
 # when a car was genuinely blocked.
 CLOSE_PROXIMITY_GAP_S = 1.5
 
-# Not fitted (originally) — see DECISIONS.md for the pooled cross-race
-# dirty-air-residual bucketing that grounds this: the gap below which mean
-# signed lap-time residual against the clean-air pace model stops growing
-# with proximity is read directly off the buckets as the empirical minimum
-# following distance, rather than guessed.
-MIN_FOLLOWING_GAP_S = 0.3
+# Fitted: the 5th percentile of observed real `gap_to_ahead_s` across the
+# catalogue (green-flag laps, positive recorded gap) — 0.580s over 5,435
+# laps, with per-race p5 tightly clustered at 0.50-0.77s. See
+# `scripts/fit_min_following_gap.py`, which re-fits and fails loudly if this
+# constant drifts more than 0.05 from the pooled value.
+#
+# This is load-bearing for product output, not an internal detail: whenever
+# a counterfactual succeeds in bringing a car into contention the clamp pins
+# the gap here, so this value *is* the margin the tool reports. It spent
+# several passes as a 0.3s placeholder whose only support was a 9-sample
+# bucket with a 0.335s standard error. Notably 0.3 turned out to sit near
+# the *1st* percentile (0.323s) — i.e. "as close as cars ever momentarily
+# get", which as a *sustained* floor let the simulator hold cars closer than
+# real cars actually sustain. p5 rather than p1 is the deliberate choice:
+# it excludes the extreme tail (momentary same-corner readings, timing
+# artifacts) while still representing genuine wheel-to-wheel running.
+MIN_FOLLOWING_GAP_S = 0.58
 
 # Not fitted — a declared prior (Part 14 rule 1): real F1 requires blue-flag
 # compliance, so a lapped car yields to a car un-lapping/lapping it
@@ -71,6 +82,8 @@ def resolve_positions(
     overtake_difficulty: float,
     rng: np.random.Generator,
     clamped_this_lap: set[str] | None = None,
+    pre_clamp_lap_times: dict[str, float] | None = None,
+    clamp_penalty_this_lap: dict[str, float] | None = None,
 ) -> list[str]:
     """One left-to-right pass over adjacent pairs in current track-position
     order. Each pair is checked at most once per lap (no chained re-checks
@@ -89,6 +102,20 @@ def resolve_positions(
     exact-tied lap times was the equality clamp's signature, not this one's
     (the floor clamp only rarely produces an exact tie), and silently
     understated or overstated the rate depending on race. See DECISIONS.md.
+
+    `pre_clamp_lap_times` and `clamp_penalty_this_lap`, if given, are also
+    filled in place, closing two observability gaps that each cost a full
+    review round:
+      - The pass roll is evaluated on the *pre-clamp* lap time, but only the
+        post-clamp value used to be recorded, so the deltas the rolls
+        actually saw were unrecoverable afterwards and any attempt to
+        reconstruct the win probability was structurally biased low.
+      - The clamp's time addition is a *held-up penalty*, not pace, and
+        accumulating it silently into `cumulative_times` meant a clamped
+        driver's total time (and its ensemble variance) mixed the two
+        together with no way to separate them. Reported separately so a
+        confidence band on a counterfactual gap can distinguish "uncertainty
+        about pace" from "how much traffic this car hit."
 
     A car that closes to within `MIN_FOLLOWING_GAP_S` of the car ahead
     without completing a pass is physically wheel-to-wheel: it cannot close
@@ -149,10 +176,14 @@ def resolve_positions(
             # without completing a pass.
             if gap_s < MIN_FOLLOWING_GAP_S:
                 deficit = MIN_FOLLOWING_GAP_S - gap_s
+                if pre_clamp_lap_times is not None:
+                    pre_clamp_lap_times[behind] = lap_times_this_lap[behind]
                 lap_times_this_lap[behind] += deficit
                 cumulative_times[behind] += deficit
                 if clamped_this_lap is not None:
                     clamped_this_lap.add(behind)
+                if clamp_penalty_this_lap is not None:
+                    clamp_penalty_this_lap[behind] = clamp_penalty_this_lap.get(behind, 0.0) + deficit
 
     return order
 

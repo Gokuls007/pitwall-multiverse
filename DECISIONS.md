@@ -600,13 +600,15 @@ this order (each is a distinct problem, not one fix cascading into the next):
   | `base_offset_s` (tyre pace offset) | **Hybrid** — starts from this driver's own fitted value, but 58-80% of drivers per race need the monotonic-ordering prior to correct it (see above); the *ordering and minimum separation* are a declared prior even though the starting point is fitted |
   | `pit_lane_loss_s` | **Fitted** from real in/out-lap timing — but downstream of the pace model above, so it inherits any bias in it (see next entry) |
   | `pit_stop_stationary_s` | **Prior** (2.4s constant) — every race, not separable from transit loss without telemetry |
-  | `dirty_air` (`DirtyAirModel`) | **Prior**, and as of 2026-08-04 **no longer applied in the simulator at all** — still fitted (always rejected, falls back to the same prior every race) and stored on `RaceParameters` for diagnostics, but `compose_lap_time_s` no longer takes it. Superseded by the stuck-behind clamp + blue-flag rule below (see Phase 3 section) |
-  | `overtake_difficulty` | **Fitted**, though acknowledged as a noisy single-race estimate (spec 6.7) |
+  | `dirty_air` (`DirtyAirModel`) | **Fitted** as of 2026-08-04, after being prior-only for most of this project's life. Per-race fitting fails on every catalogue race for a diagnosed reason (the clean-air baseline's own OLS intercept absorbs mean traffic exposure, so a curve decaying to zero can't match residuals whose true large-gap asymptote is ~-0.47s). `dirty_air.fit_pooled_dirty_air_across_races` fits it from pooled cross-race residuals with that asymptote corrected: `max_penalty_s` 1.290 [0.846, 1.850], `decay_scale_s` 0.864 [0.564, 1.494] (98 race×driver clusters, 500 bootstrap resamples). Applied at 0.912s [0.669, 1.186] at a 0.3s gap decaying to 0.127s [0.049, 0.268] at 2.0s |
+  | `overtake_difficulty` | **Fitted**, though acknowledged as a noisy single-race estimate (spec 6.7). Now known to be load-bearing for counterfactual win fractions — see the Phase 4 clamp entries |
   | `overtake_skill` / `defence_skill` | **Prior** (uniform 0.5) — every driver, every race, by design (spec 6.7 explicitly permits this) |
   | `sc_lap_time_multiplier` | **Fitted** only on races with an actual SC period (2/5 current races); **prior** otherwise |
   | `vsc_lap_time_multiplier` | **Fitted** only on races with an actual VSC period (1/5 current races); **prior** otherwise |
   | `MAX_GAP_CLOSURE_PER_LAP_S` (SC gap-closure rate) | **Prior** (15.0s/lap) — calibrated by eye against exactly one race's telemetry (2019 Monaco); the catalogue's only other full-SC period (2021 Spanish) couldn't cross-check it (lapped-traffic wraparound confounds the reconstruction). Single-data-point, unverified against a second case |
   | `BLUE_FLAG_YIELD_PROBABILITY` (lapped-car yield rate) | **Prior** (0.9) — no per-incident blue-flag-compliance-time measurement exists in this project's ingestion to fit against; grounded in the rule's existence, not its exact timing |
+  | `AR1_PHI` (pace-noise autocorrelation) | **Fitted** (0.622) — lag-1 autocorrelation of open-loop green-flag residuals, within stints and between consecutive laps only; 5,373 pairs pooled, per-race 0.45-0.68. `scripts/fit_noise_autocorrelation.py` re-fits and fails on >0.05 drift. Caveat that belongs in the ledger: autocorrelated residuals are the signature of a *missing regressor*, so this is an upper bound absorbing unexplained persistence (track evolution, sustained traffic), not a physical constant |
+  | `MIN_FOLLOWING_GAP_S` (stuck-behind floor) | **Fitted** (0.580s) — 5th percentile of observed real `gap_to_ahead_s` across the catalogue, 5,435 green-flag laps, per-race p5 clustered 0.499-0.772s. `scripts/fit_min_following_gap.py` re-fits and fails on >0.05 drift. Was a 0.3s placeholder that turned out to sit at the *1st* percentile — a momentary minimum being applied as a sustained floor. Load-bearing for product output: this is the margin the tool reports whenever a counterfactual brings a car into contention |
 
   This is not necessarily wrong — it is the honest consequence of what a
   single race's data can and can't identify, and the spec itself sanctions
@@ -814,6 +816,32 @@ The overall picture has moved further toward "mostly declared priors, with a
 handful of genuinely data-distinguishable exceptions" than the second pass's
 already-humbler framing. This should be reflected in Phase 8's README, not
 just here.
+
+**Superseded 2026-08-04 (Phase 3/4)** — this table is kept for the history
+of how the accounting evolved, but three rows above are now out of date, and
+the direction of travel reversed. See the first table in this file (the
+"Honest accounting" entry) for the current ledger. What moved from prior to
+fitted:
+
+  - `dirty_air`: now **fitted** from pooled cross-race residuals with the
+    baseline-asymptote correction that had been blocking every per-race fit,
+    with clustered bootstrap CIs.
+  - `AR1_PHI` (new term, pace-noise autocorrelation): **fitted** at 0.622
+    from 5,373 consecutive-lap residual pairs — with the caveat that
+    autocorrelation absorbs missing regressors, so it's unexplained
+    persistence rather than a physical constant.
+  - `MIN_FOLLOWING_GAP_S` (new term, stuck-behind floor): **fitted** at
+    0.580s from the 5th percentile of observed real gaps, replacing a
+    placeholder that turned out to encode the 1st percentile — a momentary
+    minimum applied as a sustained floor.
+
+So the honest current framing is less bleak than the line above: still a
+simulator with meaningful declared priors (stationary pit time, driver
+skill, SC closure rate, blue-flag yield, and the compound-separation floor
+that remains prior-dominated at 61%), but three of the terms that most
+directly shape *output the product shows a user* are now fitted from real
+data with reproducible scripts and drift guards. Phase 8's README limitations
+section should be drawn from the current table, not this one.
 
 ---
 
@@ -2070,3 +2098,852 @@ asserted.
 Committed to `phase-3-simulator-validation-not-passing` (two commits:
 the initial build plus the corrected held-out check) and merged to
 `master`. Full test suite: 141 tests, all passing.
+
+## Phase 4 — Counterfactual engine (in progress)
+
+Started per spec Part 9. Scope this pass: `ChangePitLap` only — the other
+five `Decision` types (`ChangeCompound`, `AddPitStop`, `RemovePitStop`,
+`ShiftSafetyCar`, `RemoveSafetyCar`) are declared in `domain/decision.py`
+with working `first_affected_lap` properties, but `counterfactual/
+strategy.py`'s `apply_decision` raises `NotImplementedError` for them —
+disclosed scope, not a silent gap.
+
+**Built the no-op test first**, per explicit instruction: apply a decision
+equal to reality (`ChangePitLap(driver, lap, lap)`) and the counterfactual
+must reproduce reality, *within a horizon-appropriate tolerance* rather
+than exactly — because once the fork starts resimulating, even a genuine
+no-op is predicting pace from the fitted model rather than replaying real
+times, so some drift is expected and quantified (DECISIONS.md's Phase 3
+drift-horizon entry: adjacent-gap error grows as `~0.835 * sqrt(laps
+elapsed)`). Two tests, `tests/test_counterfactual.py`: a late fork (HAM's
+real lap-48 stop, 22 laps remaining) and an early fork (BOT's real lap-5
+stop, 65 laps remaining), each asserting median adjacent-gap drift stays
+under `5 * 0.835 * sqrt(laps_remaining)` (the 5x safety multiplier
+accounts for this being a single-race, single-seed test against a
+pooled-catalogue fit, not a flaky-test workaround). Both pass.
+
+**A second, independent no-op check** (`apply_decision`'s own output,
+before any simulation): a true no-op must reconstruct the exact real
+compound/tyre-age/in-out-lap sequence for every affected lap. Found and
+fixed two real bugs writing this:
+
+1. `_apply_change_pit_lap` assumed the out-lap and the tyre-age reset
+   always land on `original_lap + 1`. On 2019 Hungary's Hamilton, his real
+   second stop (lap 48) has a genuine 2-lap transition: lap 49 is flagged
+   an out-lap but still shows the *old* compound with tyre age continuing
+   17->18 uninterrupted, and the actual fresh-compound/tyre_life=1 lap
+   doesn't appear until lap 50. Fixed by deriving the transition width
+   from each stint's own real data (via the `stint` field) rather than
+   assuming a fixed +1 offset, and preserving that width when a stop is
+   shifted. A dedicated test
+   (`test_no_op_handles_a_multi_lap_pit_transition_without_crashing`)
+   checks compound/tyre-age reconstruction exactly for this case while
+   accepting that the *exact* lap `is_out_lap` lands on can differ by one
+   lap in this specific anomaly — the properties that actually drive the
+   pace model (compound, tyre age) are what's asserted, not every flag.
+2. The affected-lap range for a shifted stop was computed as "up to the
+   stint two indices ahead," which can land inside — and silently
+   overwrite — a *later, unrelated* real pit stop when stint index and
+   `is_in_lap` don't align 1:1 (the same anomaly as above). Fixed by
+   bounding the range using the real `is_in_lap` flag directly (the
+   driver's next actual stop after `original_lap`), not stint indexing.
+
+**Demo built**: HAM's real lap-48 stop (2019 Hungary) moved to lap 44 —
+an earlier stop late in the race, chosen deliberately for the easier
+extrapolation direction (interpolation within observed tyre ages, per the
+Phase 3 held-out finding) and a short drift horizon (26 laps remaining).
+Gap-trace chart (real, faded, vs. counterfactual, bold) generated and
+shown. Result for this specific case: HAM remains the winner in both
+worlds — a real answer, not a change of outcome, which is itself
+informative (a 4-lap pit shift doesn't flip a race he won by a wide
+margin).
+
+**Not done this pass, flagged for next**: the pit-loss-bias sanity check
+(compare a real undercut to the simulator's own verdict on it) was
+partially covered by the existing `strategy_direction_match_rate` metric
+(81.8-96.2% across the catalogue, already computed in VALIDATION.md) but
+not chased down to a single hand-verified example as asked. `counterfactual
+/diff.py` (the structured spec-9.3 diff: classification change, divergence
+lap, largest swing, winner change) is not yet built — `simulate_counterfactual`
+'s `SimulationResult` has everything needed to build it against, but the
+comparison/formatting layer itself doesn't exist yet.
+
+### 2026-08-04 — No-op test made exact (not horizon-tolerant); a real bug it caught; a real demo
+
+External review correctly identified the no-op test above as too loose: a
+`5 * 0.835 * sqrt(laps_remaining)` tolerance allows ~20s of drift on the
+late-fork case and ~34s on the early-fork one — larger than a pit stop
+itself, meaning the test would have passed even if the fork machinery lost
+a driver an entire stop's worth of time. The sharper formulation: a no-op
+counterfactual forked at lap N is *the same computation* as an override-
+free fork at lap N (real strategy throughout), same seed, same code path —
+these must match byte-for-byte, not within a tolerance built for the
+*different* question of how much pace-model drift to expect over N laps.
+
+Refactored `counterfactual/engine.py` to expose `fork_and_simulate` (the
+fork mechanics, taking `overrides` directly) with `simulate_counterfactual`
+as a thin wrapper that turns a `Decision` into overrides via
+`apply_decision` and calls it. Tests now assert `simulate_counterfactual(
+no_op_decision).lap_states == fork_and_simulate(overrides={}).lap_states`
+directly, at both the late fork (HAM lap 48, 22 laps remaining) and the
+early one (BOT lap 5, 65 laps remaining).
+
+**The exact-equality version immediately caught a real bug the tolerance-
+based version had missed**: at lap 50 (right after HAM's real multi-lap
+pit transition, see the previous entry), the no-op counterfactual computed
+`lap_time_s=89.2s`; the override-free reference computed `78.78s` for the
+exact same lap. Root cause: `_apply_change_pit_lap`'s "new stint" branch
+unconditionally marked the tyre-reset lap as the out-lap
+(`is_out_lap = lap_number == shifted_new_stint_start_lap`), which is
+correct in the ordinary one-lap-transition case but double-counts when the
+transition spans more than one lap — HAM's real transition already carries
+the out-lap flag on the *earlier* transition lap (49, not 50), so marking
+50 too added a second, spurious pit-lane-time penalty (`compose_lap_time_s`
+adds `pit_lane_time_s` whenever `is_out_lap` is true) that doesn't exist in
+reality. Fixed: the "new stint" branch now only marks the reset lap as the
+out-lap when `transition_width == 1` (no separate transition-zone lap
+exists to carry that flag instead). Exactly the outcome predicted: the
+sharper test caught a bug the looser one didn't, as a hard mismatch rather
+than a judgement call about whether the drift "looked too big."
+
+**Pit-loss circuit sanity check**, per the request for a check beyond
+`strategy_direction_match_rate` (already flagged as near-tautological now
+that pitters are mechanically reinserted by cumulative time): fitted
+`pit_lane_loss_s` across the catalogue — Hungarian 20.96s, Mexican 22.73s,
+Australian 24.80s, Monaco 28.13s, Spanish 23.65s. Checked against commonly
+cited circuit figures (general knowledge, not a hard verified source):
+Hungarian/Mexican/Australian/Spanish all land in a plausible 20-25s band.
+**Monaco's 28.13s stands out** — Monaco is commonly cited as one of the
+*lowest* pit-loss circuits (~19-21s) despite its cramped pit lane, because
+the lap itself is so short; a fitted value notably above every other
+circuit, on the race already flagged with the catalogue's worst tyre-cell
+fallback fraction, is a second independent signal pointing the same
+direction. Not chased to a root cause this session, consistent with
+Monaco's existing exclusion from the gate.
+
+**Demo rebuilt**: the previous HAM lap-48-to-44 demo was correctly
+rejected as content-free ("he wins both ways" is the least interesting
+possible output — a broken engine that always returned reality would
+produce the same chart). Replaced with 2019 Hungary's actual argument:
+Red Bull left Verstappen out for a 42-lap second stint (lap 26-67) on
+HARDs and didn't cover Hamilton's late stop, which undercut him for the
+win. Counterfactual: VER's stop pulled from lap 67 to lap 50 (17 laps
+earlier — the easier, interpolation-safe direction for the *shortened*
+HARD stint; the *lengthened* SOFT stint that follows is a genuine
+extrapolation past VER's own 3-lap real sample on it, though within the
+range other drivers' pooled SOFT data covers). Result, checked across a
+10-seed ensemble: VER finishes P2 in every seed (no classification flip),
+but the *margin* changes completely — real: HAM wins by ~18-24s after the
+undercut; counterfactual: VER stays within 0.3s of the lead at the flag,
+a photo finish rather than a comfortable win. Gap-trace chart generated
+and shown. A materially different, informative answer, even without a
+position change — this is closer to the actual product experience than a
+binary win/lose flip would be.
+
+147 tests pass (unchanged count; two tests rewritten, not added). Not done
+this pass: `counterfactual/diff.py`, the remaining five decision types, and
+chasing the Monaco pit-loss anomaly to a cause.
+
+### 2026-08-04 — The VER demo's ensemble was degenerate; noise-on + AR(1) fixes it; a real distribution
+
+External review caught that the VER demo's "10-seed ensemble, VER finishes
+P2 every time" wasn't a distribution — `simulate_counterfactual` defaulted
+to `include_noise=False` (the validation-appropriate default, carried over
+from `replay_ensemble`'s reasoning without reconsidering whether it applied
+here), so the only stochasticity across seeds was overtake-resolution
+rolls; the ten seeds were ten samples of one deterministic trajectory, not
+a distribution over outcomes. Spec 6.10 requires counterfactual results
+reported as distributions, and "X finishes ahead in N% of universes" is
+this project's own multiverse framing — a near-degenerate ensemble can't
+produce that.
+
+**Fixed the default** (`simulate_counterfactual(include_noise=True)`, was
+`False`) with the correct reasoning stated explicitly this time: validation
+asks "is the deterministic pace prediction accurate" (noise can only
+inflate that answer, spec 8.3); a counterfactual is a product output that
+needs genuine outcome variation to report a distribution at all. These are
+different questions and should have different defaults — the earlier
+`False` default applied validation's reasoning to a case it doesn't fit.
+
+**But iid noise over a fork is close in magnitude to the effect being
+measured** — flagged directly: `sigma~=0.6` over ~20 post-fork laps is a
+random walk of a similar size to the closing-gap effect in the VER demo,
+so iid noise risks manufacturing the very outcome variation it's supposed
+to measure honestly, not revealing it. Fixed with `lap_time.ar1_noise_s`:
+an AR(1) process (`new = phi * prev + innovation`, innovation scaled so
+the *stationary* variance still equals `pace_std_s`) — real lap-time
+scatter persists across laps (rhythm, track evolution, tyre/fuel state)
+rather than resetting independently every lap, and autocorrelated noise
+doesn't compound into a random walk as fast as iid does over the same
+number of laps. `AR1_PHI = 0.5` is a declared, disclosed prior (Part 14
+rule 1) — no per-lap autocorrelation measurement exists in this project's
+ingestion to fit it from data. Wired into `counterfactual/engine.py` only
+(threaded per-driver `prev_noise_s` state through the forward loop);
+`simulation/engine.py`'s replay is unaffected (Phase 3 validation runs
+noise off entirely regardless, so this was never going to engage there).
+
+**Re-ran the VER demo with a real 100-seed ensemble, noise + AR(1) on**:
+VER wins in 27/100 seeds (27%), finishes P2 in the remaining 73%; final
+gap to leader ranges 0.00-1.21s (mean 0.24s, median 0.30s) across the
+ensemble. This is the answer spec 6.10 and this project's own multiverse
+framing actually call for — "Verstappen wins in roughly a quarter of
+simulated universes" — not the single "P2, 0.3s back" point estimate the
+first (noise-off, effectively degenerate) ensemble produced.
+
+**Reframed what the demo is actually confident about**, per the same
+review: the closing trajectory (VER from ~20s back to a photo finish) is
+driven by the pace and tyre models, which have real held-out validation
+behind them now. Whether he *completes the pass* is decided by
+`overtake_difficulty` (fitted from one race's observed passes — a small
+sample) and driver skill (`overtake_skill`/`defence_skill`, uniform 0.5,
+never fitted — spec 6.7 explicitly permits this as a prior). The 27%
+figure should be presented as resting on the less-validated half of the
+model, not with the same confidence as the closing-gap trajectory itself.
+
+**Pit-loss check extended**: is the bias uniform across the catalogue (in
+which case Monaco is just the tail of a shared shift) or Monaco-specific?
+Excess over commonly-cited figures (general knowledge, not a verified
+source): Hungarian +0.96s, Mexican +2.73s, Australian +3.80s, Monaco
++8.13s, Spanish +2.65s. Every race is biased in the same direction (never
+fitted *below* the commonly-cited figure) — itself worth noting as a
+possible small systematic effect worth one line in product output — but
+the magnitude is not uniform (0.96s to 8.13s, roughly an 8x range), so
+Monaco isn't simply the worst end of one shared bias; its excess is
+disproportionate even relative to the modest, consistent-direction effect
+seen everywhere else.
+
+154 tests pass (147 + 4 new AR(1) tests + 3 modified for the new default
+where they explicitly needed `include_noise=False`). Not done this pass:
+`AddPitStop` (correctly reprioritised ahead of `RemovePitStop` — shortening
+a stint via an added stop is interpolation within observed tyre ages,
+while removing a stop lengthens one, and VER's real 42-lap stint is
+already the catalogue's longest observed sample, so a one-stop version
+would need 60+-lap tyre life predicted from nothing), `counterfactual/
+diff.py`, and chasing the Monaco pit-loss anomaly or the small cross-
+catalogue bias to a root cause.
+
+### 2026-08-04 — AR1_PHI fitted (was a needless prior); the variance claim was backwards; the VER photo finish is clamp-manufactured
+
+Three corrections to the entry above, all from external review, all
+confirmed by direct measurement.
+
+**1. `AR1_PHI` was declared as a prior when it is directly and cheaply
+fittable — a Rule 1 violation of exactly the kind this project has spent
+several passes eliminating elsewhere.** It's the lag-1 autocorrelation of
+green-flag pace residuals, and the open-loop residuals needed to compute
+it already existed. Fitted properly (`scripts/fit_noise_autocorrelation.py`,
+now committed so the value is reproducible rather than hardcoded from a
+one-off): residuals taken within stints only (a stint boundary resets
+compound/tyre state, so residuals either side aren't the same persistence
+process) and between genuinely consecutive lap numbers only (cleaning
+drops in/out-laps, so a driver's usable laps have gaps; correlating across
+one would understate phi). Result across 5,373 pairs:
+
+| Race | n_pairs | phi |
+|---|---|---|
+| 2019 Hungarian | 1,179 | 0.641 |
+| 2019 Mexican | 1,130 | 0.452 |
+| 2019 Australian | 872 | 0.654 |
+| 2019 Monaco | 1,244 | 0.675 |
+| 2021 Spanish | 948 | 0.468 |
+| **Pooled** | **5,373** | **0.622** |
+
+`AR1_PHI = 0.622` now, replacing the by-feel 0.5. Per-race values span
+0.45-0.68 — real, consistent positive persistence everywhere, not a
+degenerate or noise-driven fit. The script also fails loudly if the
+constant drifts more than 0.05 from a re-fit, so this can't silently rot.
+
+**2. The stated reason for adopting AR(1) was backwards, and is
+retracted.** The previous entry said autocorrelated noise "doesn't compound
+into a random walk as fast as iid does" — the opposite is true. For a
+stationary AR(1) summed over n laps, `Var(sum) ≈ n·σ²·(1+φ)/(1−φ)`; at
+φ=0.622 that factor is 4.29, i.e. **~2.07x the iid standard deviation**
+over the same number of laps, not less. Positive autocorrelation means
+deviations persist and therefore accumulate *more*. The change is still
+correct — real scatter is measurably persistent (0.622, not 0), and
+modelling it as iid is simply wrong about the data — but it was adopted
+for a stated reason that had the sign inverted, and that reason should not
+be carried forward as justification. (The variance normalisation itself
+was already right: `innovation_std = pace_std_s * sqrt(1 - phi**2)`, so the
+*marginal* per-lap spread still equals the fitted `pace_std_s` rather than
+coming out ~15% too large.)
+
+**3. Following from (2): the VER demo's photo finish is manufactured by
+`MIN_FOLLOWING_GAP_S`, not produced by the pace models.** The arithmetic
+that should have been done and wasn't: with σ≈0.6 over ~20 post-fork laps
+and φ=0.622, each driver's cumulative noise should be several seconds and
+the *gap* between two drivers larger still — yet the observed final gap
+across the ensemble was 0.00-1.21s. Checked directly rather than assumed:
+
+- Noise *is* reaching cumulative time (std of VER's own final cumulative
+  time across the ensemble: 9.7s; HAM's: 5.0s — substantial, as expected).
+- But VER's `stuck_behind_clamped` flag fires on **40.7% of his post-fork
+  laps**, and his modal final gap is 0.30s — *exactly* `MIN_FOLLOWING_GAP_S`.
+
+So the gap between the two cars is being held at the floor by the
+stuck-behind constraint while their individual cumulative times vary by
+5-10s. **The honest framing of this demo is therefore: "VER closes to the
+limit of what the model can represent" — the closing trajectory is a real
+pace-model result, but the photo-finish margin is the constraint's floor
+value, and the win fraction is decided by overtake rolls at that floor,
+i.e. by `overtake_difficulty` (fitted from one race's passes) and driver
+skill (uniform 0.5, never fitted) almost alone.** Re-run with the fitted
+φ=0.622: VER wins 19/100 seeds (19%, down from 27% at φ=0.5), final gap
+0.00-2.32s. That 19% is a statement about one weakly-fitted parameter, not
+about the race — it should be presented that way or not headlined at all.
+
+**4. Pit loss: item closed, the concern was mine and it doesn't hold.**
+Quoted circuit pit-loss figures are pit-lane *transit* delta. This
+project's `fit_pit_loss` measures total excess over modelled pace across
+in-lap *and* out-lap, which additionally absorbs the cold-tyre out-lap
+deficit — real time genuinely lost, and specifically something the tyre
+model cannot represent, since `degradation_s(age)` is monotonically
+increasing from age 0 and so treats a fresh tyre as its fastest possible
+state. Fitted > quoted is therefore structurally expected, not evidence of
+bias, and the fitted value is the *right* one for the simulator because
+the same out-lap cost applies whenever the simulation pits. The
+consistent-direction excess noted in the previous entry (+0.96s to +8.13s)
+is that structural difference, not a systematic error to correct. Monaco's
++8.13s remains disproportionate and remains flagged. Product output should
+carry one line stating what the number includes.
+
+154 tests pass. `AddPitStop` next.
+
+### 2026-08-04 — Clamp-dependency checks: the closed form doesn't hold, ratcheting confirmed
+
+Two checks before moving on, both suggested by review. One refutes my own
+previous framing *and* the hypothesis behind the check; the other confirms
+a real mechanism.
+
+**1. The win fraction is NOT a closed-form function of `overtake_difficulty`
+at the floor — my previous entry overstated this, and the proposed
+`1-(1-p)^n` check does not reproduce it either.** Measured: VER spends a
+mean 8.54 post-fork laps clamped (range 0-17), mean pace delta on those
+laps 0.16s, `overtake_difficulty` 0.9376. That gives `p` per lap of 0.0046
+and `1-(1-p)^8.5 = 3.87%` — against an observed 19%. Recomputing with each
+lap's *actual* pace delta rather than the mean (still from recorded state)
+gives 5.58%. Still nowhere near 19%.
+
+Why: **the passes don't happen at the floor at all.** Inspecting every
+winning seed, VER takes the lead on laps 54-70 with a pace delta of
+0.4-1.7s and `stuck_behind_clamped=False` on that lap in every single case.
+The win is driven by the *tail* of the AR(1) noise distribution — laps
+where VER's draw happens to give him a large one-lap advantage — not by
+repeated rolls at a pinned 0.16s delta. So the 19% depends jointly on the
+now-fitted noise model (`pace_std_s`, `AR1_PHI=0.622`) and on
+`overtake_difficulty`, rather than reducing to the latter alone.
+
+The reconstruction is also structurally biased low and can't be fixed from
+stored state: `resolve_positions` evaluates the pass roll using the
+*pre-clamp* lap time, but `LapState.lap_time_s` records the post-clamp
+value, so the deltas the rolls actually saw aren't recoverable after the
+fact. A clean version of this check would need the roll inputs recorded at
+decision time. **Conclusion: the dependency on `overtake_difficulty` is
+real and the 19% should still be treated as soft, but the specific claim
+that it "carries no information from anything else in the model" is
+withdrawn — it demonstrably carries the noise model too.**
+
+**2. Ratcheting confirmed.** Post-fork cumulative-time growth over the 20
+remaining laps: HAM std = 5.33s, against an AR(1) prediction of
+`0.6 * sqrt(20 * (1+0.622)/(1-0.622)) ≈ 5.56s` — a good match, so the
+noise model behaves as derived for an unclamped driver. VER's std is 8.22s,
+and `corr(n_clamped_laps, VER cumulative growth) = 0.855`. The clamp adds
+`MIN_FOLLOWING_GAP_S - gap` to the follower's cumulative time and never
+returns it, so firings accumulate one-sidedly, inflating both the mean and
+the variance of a clamped driver's total time.
+
+Whether this is a bug is genuinely arguable and is recorded rather than
+silently "fixed": being held up behind a car you can't pass *does* cost
+real time permanently in reality, so a one-sided addition is defensible on
+physical grounds. What it definitely means is that **a clamped driver's
+cumulative time is not a clean measure of their pace** — it's pace plus
+accumulated held-up penalty — so it shouldn't be read as one, and the
+excess variance above the AR(1) prediction is entirely clamp-induced rather
+than a noise-model property.
+
+**3. `MIN_FOLLOWING_GAP_S = 0.3` is now load-bearing for product output and
+still hasn't passed an empirical check** (its original bucket had n=9,
+stderr 0.335). It is the headline margin the tool reports whenever a
+counterfactual succeeds in bringing a car into contention — which review
+correctly identifies as the *modal* interesting case, not an edge case.
+Options recorded, not chosen: fit it as a low percentile (e.g. 5th) of
+observed real `gap_to_ahead_s` across the catalogue, which is a defensible
+operational definition of "as close as cars actually get"; or label it in
+the UI explicitly as a representable floor rather than a predicted margin.
+Flagged as the highest-value remaining calibration item.
+
+**4. Framing note on `AR1_PHI = 0.622`**: autocorrelated residuals are the
+classic signature of a missing regressor, not only of driver rhythm. So
+0.622 is an upper bound that absorbs whatever persistent effects the model
+doesn't capture (track evolution, sustained traffic, a stint-level pace
+offset). It's the right value to *simulate* with — it reproduces the
+observed scatter structure — but it is "unexplained persistence," not a
+physical constant, and shouldn't be described as one.
+
+**Scope consequence for Phase 6**: because pinning at the floor is the
+modal outcome for any counterfactual that works, the tool can answer "does
+this bring the car into contention?" — resting on the held-out-validated
+pace and tyre models — but not "does it change the finishing order?",
+which rests on `overtake_difficulty` and a never-fitted skill prior. The UI
+should be built to make the first claim, not the second.
+
+### 2026-08-04 — AddPitStop implemented; its interpolation-safety premise was too strong
+
+Implemented `AddPitStop` in `counterfactual/strategy.py`, ahead of
+`RemovePitStop`, on the reasoning that adding a stop shortens stints
+(interpolation) while removing one lengthens them past the catalogue's
+longest observed sample (extrapolation from nothing).
+
+**A test written for that premise immediately falsified half of it.**
+`AddPitStop` shortens the *original* stint it splits — those laps are
+genuinely interpolation-safe, since shortening can only lower the tyre ages
+requested. But the *new* stint it creates runs from the added stop to the
+driver's next real stop (or the finish), and that can far exceed how long
+the driver actually ran the chosen compound. Concretely: VER ran SOFT for
+only 6 laps in 2019 Hungary, so adding a SOFT stop on lap 50 asks the model
+for SOFT ages up to 17 — real extrapolation, in the direction the whole
+decision was chosen to avoid. So "adding a stop is interpolation" is
+**directionally** right versus removing one, not unconditionally true, and
+the original framing (mine, carried from the demo-selection reasoning)
+overstated it.
+
+Rather than silently answer past the evidence, added
+`strategy.add_pit_stop_extrapolation_laps(snapshot, decision)`: returns how
+many laps of the resulting stint sit at a tyre age beyond anything that
+driver ran on that compound. 0 means fully in range. Two tests pin both
+halves — the shortened original stint stays in range, and the helper
+reports a positive count for the VER/SOFT case while returning exactly 0
+for a short HARD stint (confirming it discriminates rather than always
+flagging). Phase 6 should surface a non-zero value alongside any
+`AddPitStop` result rather than presenting it with the same confidence as
+an in-range one.
+
+`RemovePitStop` remains deliberately unimplemented for the reason above,
+now with a measured illustration of why the concern is real rather than
+theoretical.
+
+166 tests pass.
+
+### 2026-08-04 — MIN_FOLLOWING_GAP_S fitted; two observability gaps closed, both diagnoses confirmed
+
+Three items closing out Phase 4's backend work, all from review.
+
+**1. `MIN_FOLLOWING_GAP_S` is fitted, not a placeholder** —
+`scripts/fit_min_following_gap.py`, same pattern as the `AR1_PHI` script
+(re-fits, fails loudly on >0.05 drift). Operational definition: the 5th
+percentile of observed real `gap_to_ahead_s` across the catalogue over
+green-flag laps with a positive recorded gap. Pooled over 5,435 laps that's
+**0.580s**, with per-race p5 tightly clustered at 0.499-0.772s.
+
+A useful thing fell out of the distribution: the old 0.3 placeholder sits
+almost exactly at the **1st** percentile (0.323s). So it encoded "as close
+as cars *ever* momentarily get" and then applied that as a *sustained*
+floor — letting the simulator hold cars closer than real cars actually
+sustain, on the number the product reports as its headline margin. p5 rather
+than p1 is deliberate: it excludes the extreme tail (momentary same-corner
+readings, timing artifacts) while still representing genuine wheel-to-wheel
+running.
+
+**2. The pre-clamp/post-clamp observability gap is closed, and the
+reconstruction now works.** Added `LapState.pre_clamp_lap_time_s`: the
+value `resolve_positions` actually evaluated the pass roll on, before the
+clamp modified it. Redoing the closed-form win-probability reconstruction
+with it:
+
+| Reconstruction input | Predicted | Observed |
+|---|---|---|
+| post-clamp lap times (previous attempt) | 5.6% | 19% |
+| **pre-clamp lap times (now recorded)** | **21.5%** | **25%** |
+
+The remaining 21.5-vs-25 gap is a known selection artifact of reconstructing
+from stored state (the lap a pass *succeeds* on records VER at position 1,
+so it's skipped by the "is he behind someone" filter). Close enough to
+confirm the mechanism: **the win fraction is essentially a function of
+`overtake_difficulty` evaluated against noise-driven pace deltas**, and it
+is now checkable rather than a black box. This was the third round in which
+a missing observability field cost real diagnostic work — the stale
+clamp-detection heuristic and the unrecoverable roll inputs were the same
+class of blind spot — so the fields are added rather than the analysis
+being redone from inference again.
+
+**3. Clamp penalty is now a separate field, and the variance split
+confirms the ratcheting diagnosis exactly.** Added
+`LapState.cumulative_clamp_penalty_s`, a running total of held-up time
+added to each driver. Decomposing VER's post-fork cumulative growth across
+a 100-seed ensemble:
+
+| Component | mean | std |
+|---|---|---|
+| Total growth | 1583.97s | 8.83s |
+| of which held-up penalty | 13.45s | 7.74s |
+| **pace-only (total − penalty)** | 1570.52s | **5.02s** |
+| AR(1) prediction for pace-only std | — | 5.56s |
+
+Pace-only std (5.02s) matches the AR(1) prediction (5.56s) closely, while
+the inflation to 8.83s is entirely the held-up penalty. That confirms
+the earlier hypothesis: **the excess variance was traffic, not pace.**
+Practical consequence for Phase 6: a confidence band drawn on total
+cumulative time or gap would be reporting "how much traffic did this car
+hit" alongside "how uncertain is its pace." Those are now separable and
+should be reported separately.
+
+**Framing note carried forward, and it's the uncomfortable one**: since the
+wins come from the AR(1) noise tail, the win fraction is partly a function
+of φ = 0.622 — which is *unexplained persistence* absorbing whatever
+regressors the pace model is missing, not a physical constant. So a
+**better** pace model would have lower φ, a thinner tail, and fewer
+simulated wins. The win fraction therefore partly reflects model ignorance
+rather than race dynamics. This is the argument for headlining the closing
+trajectory (validated pace and tyre models) and reporting the win fraction
+as a footnote, not the reverse.
+
+With the fitted 0.58 floor the VER demo reads: VER wins 25/100 seeds,
+closing from ~20s down to the fitted floor. 166 tests pass.
+
+**Backend decision types stop here.** `ChangePitLap` + `AddPitStop` is
+enough surface to build a real interface against; `RemovePitStop`
+(extrapolation), `ChangeCompound` (prior-driven), and the safety-car
+decisions (SC exists only in Spanish, at lap ~8 with a long drift horizon,
+and Monaco, which is excluded from the gate) all have either a modelling
+or a data reason to wait. Next: Phase 6.
+
+## Phase 6 — Frontend (in progress)
+
+### 2026-08-04 — Design plan, and GapChart built to it
+
+Design plan written and reviewed before any component code (spec 11.1).
+Concept: **the official FIA session timing document, annotated** — warm
+paper stock, monospaced numerals, hairline rules, no decoration; the
+counterfactual layer as an editor's annotation on an official record.
+
+The decisive argument was functional rather than aesthetic, and worth
+recording because it inverts the obvious choice: spec 11.2 mandates team
+colours for driver lines, and 10+ saturated hues on a dark field all glow
+and stop separating. Neutral paper chrome makes team colour the only
+saturated thing on screen, which is exactly what should carry the data. So
+"not a dark dashboard with neon accents" isn't only about avoiding the
+template answer — the template answer actively fights the mandated encoding.
+
+**Palette** (6): `paper #F4F1EA`, `ink #1A1917`, `rule #C9C3B6`,
+`wash #E8E4DA`, `annotation #A33A2E` (counterfactual only, an oxide
+editor's-mark red, never a racing red and never a large fill), `caution
+#A8761F` (epistemic warning only). Two of the six exist because of things
+this project measured: `caution` has a job because
+`add_pit_stop_extrapolation_laps` and the drift horizon produce real numbers
+about where the model stops being trustworthy.
+
+**Typefaces** (3, one per content register): IBM Plex Mono for every numeral,
+Archivo for UI labels, Spectral for prose only. Three is justified because
+the content genuinely has three registers; the serif is quarantined to prose
+and is the one to cut if it starts appearing decoratively.
+
+**Four things resolved on review before building:**
+
+1. *The palette and 11.2 contradicted each other about driver lines.* Real
+   resolution: two chart modes, not one. **Field** = 20 drivers, team
+   colours, reality only, y auto-scaled to field spread. **Focus** = one
+   driver, ink vs oxide, y locked to those two lines so a sub-second margin
+   is visible. Different legends, different hover, different y-scale.
+2. *One annotation colour can't carry a multiverse.* Committed to **one
+   alternate at a time** on the chart, with the tree holding the branches —
+   a division of labour rather than a dodge, since a two-line chart at a
+   locked scale is the only place a 0.58s margin is readable. Palette stays
+   at six; no annotation ramp.
+3. *Mobile was hand-waved.* Real mechanism: minimum **14px per lap** with
+   both panes in a *single* horizontally-scrolling container, so shared-axis
+   alignment holds by construction rather than by synchronising two scroll
+   offsets. Verified at 375px: 14.0px/lap maintained, chart scrolls inside
+   its container, page itself does not overflow.
+4. *The stemma justification was dropped.* A stemma codicum reasons
+   *backward* — inferring a lost archetype from surviving variants — which
+   inverts the epistemics of running forward from a known record into
+   variants that never existed. Reframed as a **critical apparatus**
+   (received text plus variant readings), which points the right way and is
+   just the annotation metaphor extended. The rendering choices survive
+   intact since they stood on their own merits.
+
+**The variance split is surfaced, not merged.** Because the backend now
+separates pace variance from accumulated held-up time, the chart uses two
+distinct channels: a pace-only band (the band means *one* thing) and
+discrete tick marks where the clamp bound, so traffic reads as an event
+rather than as diffused uncertainty. Verified live at lap 60: the readout
+shows `real 0.0s / alt 0.6s / Δ +0.6s / held up (70% of runs)` — VER pinned
+at ~the fitted 0.58s floor, and the UI *says* he's held up rather than
+presenting that margin as a pace result.
+
+**Team colour vs legibility, resolved computationally** (`lib/teamColors.ts`):
+keep each team's hue, darken luminance until the line clears 3:1 against
+paper (WCAG non-text minimum, the right threshold for a chart line), and
+give teammates distinct dash patterns so a pair separates without colour at
+all. Verified live in field mode: 20 lines, 10 teams, 10 teammates dashed,
+worst contrast 3.02. Tests pin the floor and the hue preservation so a
+palette change can't quietly break either.
+
+**Data source, labelled honestly**: Phase 5's API isn't built, so
+`scripts/export_fixture.py` dumps the shapes it will serve, from the same
+pipeline functions, against real 2019 Hungary data and a real 60-seed
+counterfactual ensemble. The footer says so on screen. Swapping in the live
+endpoint is a data-source change, not a rewrite.
+
+Frontend: 5 tests. Backend: 166. Next: StrategyTimeline sharing the
+established lap axis, then DecisionPanel, Classification, and the apparatus
+tree last (with dummy-data legibility testing at depth 3+ before committing
+to its layout).
+
+### 2026-08-04 — Looking at the rendered chart found three problems no programmatic check caught
+
+Every automated check passed — palette tokens live, both modes wiring
+correctly, contrast floors cleared, mobile scroll mechanism working — and
+the chart was still not usable. Opening it surfaced three faults, all
+invisible to assertions about structure:
+
+1. **The counterfactual was off-screen.** Divergence at lap 50, chart
+   defaulted to scroll-left, so laps 50-70 — the entire alternate history —
+   sat outside the viewport. The auto-scroll-to-divergence behaviour had
+   been *specified* in the design plan and never built.
+2. **Pre-fork pit-stop swings dominated the y-scale.** VER's real lap-25
+   stop puts his gap at ~18s, so the axis spanned 0-30 and the actual
+   post-fork effect was an imperceptible sliver at the top. Both fixed by
+   the same change: focus mode now defaults to a lap window starting
+   `FOCUS_LEAD_IN_LAPS` before the fork, with a "whole race" toggle. Solving
+   the framing solved the scale.
+3. **The ink (real) line was invisible.** Pre-fork, the alternate timeline
+   *is* reality copied verbatim (spec 9.1 step 4), so oxide was drawn
+   exactly on top of ink and "real" appeared absent from its own chart. The
+   alternate is now drawn only from the divergence lap onward — one history
+   before the fork, two after, which is also just the truth of the model.
+
+Plus two smaller ones only visible by eye: the chart occupied ~55% of its
+container (MIN_LAP_WIDTH_PX was being used as a fixed size rather than a
+floor — now `max(minimum, available)` via ResizeObserver, with a graceful
+window-listener fallback since jsdom has no implementation), and axis labels
+collided (`44 45` overlapping at the left edge, `LAP` printed over `70`).
+
+**Recording this as a process note, not just a bug list**: the programmatic
+verification was not wrong, it was answering a different question — "is this
+wired correctly" rather than "does this work." Structural assertions cannot
+see a chart whose interesting region is scrolled out of frame. The same
+lesson as the noise-in-metric and clamp-detection-heuristic findings, in a
+new domain.
+
+**Four review points also resolved:**
+
+- *The 25% win fraction was stale.* It was measured at
+  `MIN_FOLLOWING_GAP_S = 0.3`; the floor is now 0.580. The fixture was in
+  fact already regenerated at the new floor and reports **20% (12/60)** —
+  the UI number was correct, the prose figure was not. Now guarded:
+  `meta.paramFingerprint` records the constants and fitted values used, and
+  `tests/test_fixture.py` asserts they match live code, so a refit that
+  invalidates the fixture fails a test rather than silently shipping a
+  number nobody re-derived. Same drift-guard pattern as the `AR1_PHI` and
+  `MIN_FOLLOWING_GAP_S` fitting scripts.
+- *The alternate line was an unlabelled median.* A per-lap median is not a
+  trajectory any seed produced, and it could visually contradict the
+  distribution panel beside it. Now: 14 real seed traces drawn faintly
+  behind it, and the legend says "median of 14+ runs" explicitly.
+- *Locked y-scale would magnify a constant.* Added `MIN_Y_EXTENT_S = 5`, so a
+  gap pinned at the model's own 0.58s floor renders as the small margin it
+  is rather than a chasm.
+- *3.02 contrast is passing, not legible.* Twenty hairlines at the floor do
+  read as spaghetti. Field mode now draws everything at 0.5 opacity by
+  default and raises a single driver to full weight on hover in the readout,
+  so the baseline is a quiet background and attention is directed.
+
+Verified after: no spurious scrollbar, 14 seed traces, 14 clamp ticks,
+alternate starting at the fork, clean tick labels, and mobile still holding
+14.5px/lap with in-container scroll and no page overflow. Frontend 5 tests,
+backend 170.
+
+### 2026-08-04 — The fork's rendering, and why the anchor is structural not cosmetic
+
+Checked the single most important point on the chart: where the alternate
+line originates. In this case there is no seam — VER's real and alternate
+gaps are both 0.0 at lap 50, because he leads in both timelines there. But
+that is **luck, not structure**: the fork lap can legitimately hold different
+values in the two timelines (it's the in-lap under the decision), and if it
+does, an oxide stroke starting there begins disconnected from the history it
+branches from.
+
+Fixed structurally rather than relying on the happy case: the alternate path
+is now anchored at `divergenceLap - 1`, a lap that genuinely belongs to
+*both* timelines (pre-fork laps are reality copied verbatim, spec 9.1 step
+4). So including it is truthful and guarantees visual continuity in every
+case, not just this one. Added a branch node at the anchor — paper-filled
+with an ink stroke, so it reads as a junction on the shared line rather than
+a data point belonging to either timeline.
+
+Also added `GapChart.test.tsx` pinning five properties, with the reasoning
+recorded in the file: **every one of the three faults found by looking was a
+property nobody had thought to name.** That isn't a coverage gap that better
+discipline would have closed — it's the standing argument for looking. But
+once a property *is* named, it should be a test rather than something the
+next reviewer has to re-notice. Pinned: the branch anchors at the last shared
+lap, a branch node exists, the alternate isn't drawn pre-fork, the y-extent
+floor holds against a small constant gap, and held-up laps render as discrete
+ticks rather than widening the pace band.
+
+**Extending the fingerprint pattern** (noted as the best artifact of this
+pass, since every stale-number incident in this project has had the same
+shape — a value derived under one parameter set and quoted after the
+parameters moved): `meta.paramFingerprint` plus `tests/test_fixture.py`
+now makes that structurally impossible for the fixture. The same treatment
+is still owed to the drift-horizon constant, the extrapolation-lap figures,
+and VALIDATION.md's own numbers. Recorded as the next guard to build, not
+as done.
+
+Frontend 10 tests, backend 170.
+
+### 2026-08-04 — StrategyTimeline on the shared axis; a fabricated-data bug found by looking again
+
+Built `LapAxisPanes` + `StrategyTimeline`, completing the layout's central
+analytical claim: one scroll container, one x-scale, both panes rendering
+into it at identical widths (verified: both SVGs exactly 1048px). Alignment
+holds **by construction** rather than by synchronising two scroll offsets,
+which would eventually drift. The axis is an explicit input to both
+components, not something either derives.
+
+**Three review points, all addressed:**
+
+1. *Compound colour collided with the annotation token.* The broadcast
+   convention (soft-red / medium-yellow / hard-white) fails twice here: red
+   already means "counterfactual", and white is invisible on cream. Replaced
+   with a luminance ramp in ink tints (`lib/compounds.ts`), ordered to match
+   the tyre model's own monotonic prior — darker = softer = faster, so it
+   reads as one consistent scale rather than three borrowed hues. Red stays
+   reserved for the alternate timeline.
+2. *Whose strategy is shown?* Focus mode gives the driver **two rows**, real
+   and alternate, since with a counterfactual active he has two stint
+   structures and one bar would contradict the chart directly above it. The
+   difference between the rows *is* the decision, which makes it legible as
+   one.
+3. *`--caution` earned its place.* Generalised the extrapolation helper first:
+   `add_pit_stop_extrapolation_laps` was `AddPitStop`-specific, but
+   `ChangePitLap` extrapolates too — so `strategy.extrapolation_by_lap` is now
+   decision-agnostic. The result is worth stating: **the alternate SOFT stint
+   runs tyre ages 4→23 against the 6 VER actually reached, so 17 of its laps
+   are beyond any evidence.** That's hatched in ochre on the stint bar with a
+   plain-language line beneath, putting the epistemics on the surface where
+   the user makes the choice rather than in this file.
+
+**And looking again found another fabricated-data bug.** Field mode showed
+VER's opening stint as `M 25` — I had derived tyre age from stint length
+(`endLap - startLap + 1`) because the `stints` export didn't carry age. But
+age and length are different quantities: that stint runs laps 1-25 at ages
+**4-28**, because it started on used tyres. The UI was displaying a number
+the model never used. Fixed by exporting real per-lap ages, and pinned with a
+guard that asserts at least one stint's real end-age disagrees with its lap
+count — otherwise the guard couldn't detect the derivation coming back.
+
+Worth noting the first version of that guard was itself wrong: it asserted the
+age *span* differs from the lap span, which is never true (age advances one
+per lap). The tell is the *absolute* age against stint length. Corrected
+before committing.
+
+Frontend 10 tests, backend 175.
+
+### 2026-08-04 — DecisionPanel, and the "safe direction" asymmetry doesn't hold
+
+Built `DecisionPanel`, completing the interaction loop. Three decisions, one
+of which corrected a premise from review.
+
+**1. Nothing is blocked.** Refusing choices past the evidence would make the
+tool decline the exact question it exists to answer — the Hungary argument
+*is* a 17-laps-beyond-observed stint. Every lap the engine can represent is
+selectable; the warning escalates with exposure instead (within observed /
+slightly beyond / beyond / far beyond). The preview follows spec 11.2's own
+teaching shape, verified live across the range:
+
+  - lap 67 (real): "a 3-lap stint on softs, reaching tyre age 6 — entirely
+    within the 6 laps VER actually ran on that compound."
+  - lap 60: "a 10-lap stint … 7 laps beyond the 6 …"
+  - lap 40: "a 30-lap stint … 27 laps beyond the 6 …"
+
+**2. Previews are read, not recomputed — deliberately.** Every candidate's
+stint structure and extrapolation is precomputed by calling the real
+`apply_decision` for each valid lap and exported. A slider is the single most
+tempting place to reimplement stint arithmetic client-side, and that is
+exactly what produced a displayed tyre age the model never used one pass ago.
+Reading a table generated by the real code path makes preview and simulation
+consistent by construction. The valid range is also discovered by asking
+`apply_decision` what it accepts rather than by reasoning about bounds.
+
+**3. The stated asymmetry is wrong, and measuring it was worth it.** Review
+proposed that pitting *earlier* shortens the stint and interpolates while
+pitting *later* extends it and extrapolates — so the slider would have a safe
+direction and a risky one. The computed curve says otherwise:
+
+| new lap | new stint | laps beyond evidence |
+|---|---|---|
+| 40 | SOFT ×30 | 27 |
+| 60 | SOFT ×10 | 7 |
+| **67 (real)** | SOFT ×3 | **0** |
+| 68 | SOFT ×2 | 1 |
+| 70 | HARD ×4 | 3 |
+
+Both directions extrapolate. Moving the stop earlier lengthens the
+*following* stint (past SOFT's observed 6); moving it later lengthens the
+*current* one (past HARD's observed 42). **Reality is the minimum, and that
+generalises**: observed tyre ages are by definition what actually happened,
+so any counterfactual moves away from the evidence in some dimension. There
+is no safe direction, only a zero point.
+
+The panel therefore shows the computed curve as a sparkline with reality
+marked, rather than captioning an assumed direction. It's the panel's most
+useful element: the user learns the model's shape by moving the slider.
+
+Also corrected on looking: at 100px the curve read as a plain descending
+line, because this race's "pit later" arm is only three laps wide (real stop
+is lap 67 of 70) while the "pit earlier" arm spans the race. Widened, and
+reality is now marked with a dashed rule — otherwise the asymmetry looks like
+an arbitrary slope. So it is strongly asymmetric here, just not in the
+direction proposed.
+
+Frontend 10 tests, backend 175.
+
+### 2026-08-04 — Classification shows a distribution, not an order
+
+Built `Classification` to render a **per-driver finishing-position
+distribution** rather than a single alternate order. This is the panel where
+spec 6.10 either lands or quietly collapses into a point estimate, and there
+was a concrete incoherence waiting if it collapsed: the gap chart beside it
+draws a per-lap *median* trace, which is no universe any seed produced. VER's
+median trace ends ~0.6s adrift while the ensemble has him winning 20% of
+runs. Those are not contradictory — they describe different objects — but
+placing one definite "alternate finishing order" next to that median would
+invite reading them as one answer, and a reader would be right to call it
+incoherent.
+
+So reality is rendered as a position (outlined in `--annotation`) and the
+alternate as a spread (ink tints by share), which are visibly different kinds
+of thing. Where an outcome is genuinely near-certain the bar collapses to one
+cell on its own — more informative than asserting certainty everywhere.
+
+Exported `counterfactual.classification`: per driver, the full position
+distribution across the 60-seed ensemble, modal position and share, mean
+position, and the real finishing position. Read, not derived — same discipline
+as the tyre-age fix.
+
+What it surfaces, including unflattering things:
+
+| Driver | Real | Alternate spread |
+|---|---|---|
+| HAM | P1 | P1 80% / P2 20% |
+| VER | P2 | P1 20% / P2 80% |
+| VET | P3 | P3 57% / P4 43% |
+| BOT | P8 | P9 7% / **P10 83%** / P11 8% / P12 2% |
+
+BOT is a genuine model error left visible: he really finished P8, the model
+puts him at P10 in 83% of runs. A panel showing one order would have shown
+"P10" flatly; showing the distribution makes clear the model is confidently
+wrong there rather than uncertain.
+
+Also corrected the README's phase framing, which undersold by omission: the
+checklist reading "Phase 5 unbuilt" invites inferring abandonment rather than
+scoping. Added a paragraph stating the API was deferred deliberately, that
+the interaction loop is complete without it (the frontend renders real
+simulations precomputed through the same pipeline functions the API would
+call), and that given the choice between an API serving an unvalidated
+simulator and a validated simulator behind a fixture, the second is the more
+honest artifact.
+
+Frontend 10 tests, backend 159.

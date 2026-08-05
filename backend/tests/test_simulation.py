@@ -124,6 +124,51 @@ def test_noise_zero_when_std_zero():
     assert lap_time.noise_s(rng, 0.0) == 0.0
 
 
+def test_ar1_noise_zero_when_std_zero():
+    rng = make_rng(1)
+    assert lap_time.ar1_noise_s(rng, 0.0, prev_noise_s=1.5) == 0.0
+
+
+def test_ar1_noise_deterministic_given_seed():
+    rng1, rng2 = make_rng(7), make_rng(7)
+    assert lap_time.ar1_noise_s(rng1, 0.3, prev_noise_s=0.1) == lap_time.ar1_noise_s(rng2, 0.3, prev_noise_s=0.1)
+
+
+def test_ar1_noise_has_stationary_variance_matching_pace_std():
+    # Long chain of AR(1) draws should have a sample variance close to
+    # pace_std_s^2 -- the whole point of scaling the innovation by
+    # sqrt(1 - phi^2) is that any single lap's marginal spread matches the
+    # iid case, only the lap-to-lap correlation differs.
+    rng = make_rng(42)
+    pace_std_s = 0.5
+    values = []
+    prev = 0.0
+    for _ in range(20000):
+        prev = lap_time.ar1_noise_s(rng, pace_std_s, prev_noise_s=prev)
+        values.append(prev)
+    sample_std = (sum(v**2 for v in values) / len(values)) ** 0.5
+    assert abs(sample_std - pace_std_s) < 0.02
+
+
+def test_ar1_noise_is_correlated_across_consecutive_draws():
+    rng = make_rng(3)
+    pace_std_s = 0.6
+    a_values, b_values = [], []
+    prev = 0.0
+    for _ in range(5000):
+        prev = lap_time.ar1_noise_s(rng, pace_std_s, prev_noise_s=prev)
+        a_values.append(prev)
+    b_values = a_values[1:]
+    a_values = a_values[:-1]
+    mean_a = sum(a_values) / len(a_values)
+    mean_b = sum(b_values) / len(b_values)
+    cov = sum((a - mean_a) * (b - mean_b) for a, b in zip(a_values, b_values, strict=True)) / len(a_values)
+    std_a = (sum((a - mean_a) ** 2 for a in a_values) / len(a_values)) ** 0.5
+    std_b = (sum((b - mean_b) ** 2 for b in b_values) / len(b_values)) ** 0.5
+    correlation = cov / (std_a * std_b)
+    assert correlation > 0.3  # AR1_PHI=0.5 should show clear positive autocorrelation, well above iid's ~0
+
+
 def test_compose_lap_time_combines_all_terms_and_is_deterministic():
     dp = _driver_params(pace_std_s=0.2)
     model = DirtyAirModel(max_penalty_s=0.3, decay_scale_s=1.0, r_squared=0.1, n_observations=50)
