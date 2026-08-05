@@ -13,6 +13,7 @@
  */
 
 import { useMemo, useState } from "react";
+import Classification, { type ClassificationRow } from "./components/Classification";
 import DecisionPanel from "./components/DecisionPanel";
 import GapChart from "./components/GapChart";
 import LapAxisPanes from "./components/LapAxisPanes";
@@ -248,9 +249,12 @@ export default function App() {
             </p>
           </div>
 
-          {/* The distribution, not a single order (spec 11.2). */}
+          {/* The focus driver's own spread, called out. The full field is in
+              the Classification table below. */}
           <div className="min-w-[13rem] border-l border-rule pl-4">
-            <h2 className="label-caps">Outcome across {cf.nSeeds} runs</h2>
+            <h2 className="label-caps">
+              {cf.driver} across {cf.nSeeds} runs
+            </h2>
             <dl className="mt-1.5 font-mono text-sm">
               {Object.entries(cf.outcome.positionDistribution).map(([pos, n]) => (
                 <div key={pos} className="flex items-baseline gap-2 py-0.5">
@@ -272,6 +276,17 @@ export default function App() {
             </p>
           </div>
         </section>
+      )}
+
+      {/* Double assertion on `rows`: TS infers a per-row literal shape for
+          each JSON distribution (a row only carries the position keys it
+          actually used), and those don't unify with Record<string, number>. */}
+      {mode === "focus" && (
+        <Classification
+          rows={cf.classification as unknown as ClassificationRow[]}
+          focusDriver={cf.driver}
+          nRuns={cf.nSeeds}
+        />
       )}
 
       <footer className="rule-t mt-8 pt-3 font-mono text-micro text-ink/50">

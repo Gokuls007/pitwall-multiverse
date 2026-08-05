@@ -290,6 +290,39 @@ def main() -> None:
             }
         )
 
+    # --- Per-driver finishing-position distributions across the ensemble ---
+    # Spec 6.10: a counterfactual outcome is a distribution, not a point. This
+    # is also where the UI could most easily contradict itself: the gap chart
+    # draws a per-lap *median* trace, which is no single universe, so showing
+    # one "alternate finishing order" beside it would invite reading two
+    # different objects as one answer (a median ending 0.6s adrift while the
+    # ensemble wins 20% of runs is not a contradiction, but a single order
+    # would make it look like one). Export the spread and let the panel show
+    # the spread.
+    real_finish = {d.code: d.finish_position for d in snapshot.drivers}
+    position_counts: dict[str, dict[int, int]] = defaultdict(lambda: defaultdict(int))
+    for result in results:
+        for driver, position in result.classification:
+            position_counts[driver][position] += 1
+
+    classification_rows = []
+    for driver, counts in position_counts.items():
+        total = sum(counts.values())
+        modal_position = max(counts, key=lambda p: counts[p])
+        classification_rows.append(
+            {
+                "driver": driver,
+                "realPosition": real_finish.get(driver),
+                "modalPosition": modal_position,
+                "modalShare": round(counts[modal_position] / total, 3),
+                "meanPosition": round(sum(p * n for p, n in counts.items()) / total, 2),
+                # Full spread, so the panel can render it rather than collapse it.
+                "distribution": {str(p): n for p, n in sorted(counts.items())},
+                "nRuns": total,
+            }
+        )
+    classification_rows.sort(key=lambda r: (r["realPosition"] is None, r["realPosition"] or 99))
+
     winners = [result.classification[0][0] for result in results if result.classification]
     focus_positions = [dict(result.classification).get(focus) for result in results]
     focus_wins = sum(1 for p in focus_positions if p == 1)
@@ -339,6 +372,7 @@ def main() -> None:
             "series": alternate_series,
             "seedSeries": seed_series,
             "candidates": candidates,
+            "classification": classification_rows,
             "focusStrategy": {
                 "real": stint_runs(focus_real_records),
                 "alternate": stint_runs(focus_alternate_records),

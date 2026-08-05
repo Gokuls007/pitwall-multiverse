@@ -284,10 +284,21 @@ with every retraction preserved in place rather than edited away:
 - [x] Phase 2 — Parameter fitting
 - [x] Phase 3 — Simulator + validation ⚠️ hard gate (passes under §8.3.1)
 - [x] Phase 4 — Counterfactual engine (`ChangePitLap`, `AddPitStop`)
-- [ ] Phase 5 — API *(frontend currently reads a generated fixture)*
-- [ ] Phase 6 — Frontend core (GapChart, StrategyTimeline, DecisionPanel done; Classification pending)
+- [~] Phase 5 — API *(deferred, see below)*
+- [~] Phase 6 — Frontend core (GapChart, StrategyTimeline, DecisionPanel, Classification)
 - [ ] Phase 7 — Multiverse tree
 - [ ] Phase 8 — Polish
+
+**The API was deferred deliberately, and the interaction loop is complete without it.**
+The frontend renders real simulations — real 2019 Hungary lap data, real fitted parameters,
+a real 60-seed counterfactual ensemble — precomputed by
+`backend/scripts/export_fixture.py` through the same pipeline functions the API will call.
+Every candidate pit lap's strategy consequence is precomputed the same way, so the
+decision slider responds instantly and correctly. What the API adds is running a *new*
+ensemble for a lap that wasn't precomputed; it does not add correctness, and swapping the
+fixture for an endpoint is a data-source change rather than a rewrite. Given the choice
+between an API serving an unvalidated simulator and a validated simulator behind a
+fixture, the second is the more honest artifact.
 
 Deliberately **not** implemented, with reasons: `RemovePitStop` (lengthens a stint past
 anything observed — the catalogue's longest sample is 42 laps, a one-stop needs 60+),

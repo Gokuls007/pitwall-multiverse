@@ -16895,6 +16895,255 @@
         ]
       }
     ],
+    "classification": [
+      {
+        "driver": "HAM",
+        "realPosition": 1,
+        "modalPosition": 1,
+        "modalShare": 0.8,
+        "meanPosition": 1.2,
+        "distribution": {
+          "1": 48,
+          "2": 12
+        },
+        "nRuns": 60
+      },
+      {
+        "driver": "VER",
+        "realPosition": 2,
+        "modalPosition": 2,
+        "modalShare": 0.8,
+        "meanPosition": 1.8,
+        "distribution": {
+          "1": 12,
+          "2": 48
+        },
+        "nRuns": 60
+      },
+      {
+        "driver": "VET",
+        "realPosition": 3,
+        "modalPosition": 3,
+        "modalShare": 0.567,
+        "meanPosition": 3.43,
+        "distribution": {
+          "3": 34,
+          "4": 26
+        },
+        "nRuns": 60
+      },
+      {
+        "driver": "LEC",
+        "realPosition": 4,
+        "modalPosition": 4,
+        "modalShare": 0.567,
+        "meanPosition": 3.57,
+        "distribution": {
+          "3": 26,
+          "4": 34
+        },
+        "nRuns": 60
+      },
+      {
+        "driver": "SAI",
+        "realPosition": 5,
+        "modalPosition": 5,
+        "modalShare": 0.967,
+        "meanPosition": 5.05,
+        "distribution": {
+          "5": 58,
+          "6": 1,
+          "7": 1
+        },
+        "nRuns": 60
+      },
+      {
+        "driver": "GAS",
+        "realPosition": 6,
+        "modalPosition": 6,
+        "modalShare": 0.917,
+        "meanPosition": 6.02,
+        "distribution": {
+          "5": 2,
+          "6": 55,
+          "7": 3
+        },
+        "nRuns": 60
+      },
+      {
+        "driver": "RAI",
+        "realPosition": 7,
+        "modalPosition": 7,
+        "modalShare": 0.9,
+        "meanPosition": 6.97,
+        "distribution": {
+          "6": 4,
+          "7": 54,
+          "8": 2
+        },
+        "nRuns": 60
+      },
+      {
+        "driver": "BOT",
+        "realPosition": 8,
+        "modalPosition": 10,
+        "modalShare": 0.833,
+        "meanPosition": 10.05,
+        "distribution": {
+          "9": 4,
+          "10": 50,
+          "11": 5,
+          "12": 1
+        },
+        "nRuns": 60
+      },
+      {
+        "driver": "NOR",
+        "realPosition": 9,
+        "modalPosition": 8,
+        "modalShare": 0.967,
+        "meanPosition": 7.97,
+        "distribution": {
+          "7": 2,
+          "8": 58
+        },
+        "nRuns": 60
+      },
+      {
+        "driver": "ALB",
+        "realPosition": 10,
+        "modalPosition": 11,
+        "modalShare": 0.683,
+        "meanPosition": 11.15,
+        "distribution": {
+          "10": 6,
+          "11": 41,
+          "12": 11,
+          "13": 2
+        },
+        "nRuns": 60
+      },
+      {
+        "driver": "PER",
+        "realPosition": 11,
+        "modalPosition": 9,
+        "modalShare": 0.933,
+        "meanPosition": 9.07,
+        "distribution": {
+          "9": 56,
+          "10": 4
+        },
+        "nRuns": 60
+      },
+      {
+        "driver": "HUL",
+        "realPosition": 12,
+        "modalPosition": 12,
+        "modalShare": 0.617,
+        "meanPosition": 11.93,
+        "distribution": {
+          "11": 14,
+          "12": 37,
+          "13": 8,
+          "14": 1
+        },
+        "nRuns": 60
+      },
+      {
+        "driver": "MAG",
+        "realPosition": 13,
+        "modalPosition": 13,
+        "modalShare": 0.717,
+        "meanPosition": 12.95,
+        "distribution": {
+          "12": 10,
+          "13": 43,
+          "14": 7
+        },
+        "nRuns": 60
+      },
+      {
+        "driver": "RIC",
+        "realPosition": 14,
+        "modalPosition": 14,
+        "modalShare": 0.867,
+        "meanPosition": 13.85,
+        "distribution": {
+          "12": 1,
+          "13": 7,
+          "14": 52
+        },
+        "nRuns": 60
+      },
+      {
+        "driver": "KVY",
+        "realPosition": 15,
+        "modalPosition": 15,
+        "modalShare": 1.0,
+        "meanPosition": 15.0,
+        "distribution": {
+          "15": 60
+        },
+        "nRuns": 60
+      },
+      {
+        "driver": "RUS",
+        "realPosition": 16,
+        "modalPosition": 16,
+        "modalShare": 1.0,
+        "meanPosition": 16.0,
+        "distribution": {
+          "16": 60
+        },
+        "nRuns": 60
+      },
+      {
+        "driver": "STR",
+        "realPosition": 17,
+        "modalPosition": 18,
+        "modalShare": 0.967,
+        "meanPosition": 17.97,
+        "distribution": {
+          "17": 2,
+          "18": 58
+        },
+        "nRuns": 60
+      },
+      {
+        "driver": "GIO",
+        "realPosition": 18,
+        "modalPosition": 17,
+        "modalShare": 0.967,
+        "meanPosition": 17.03,
+        "distribution": {
+          "17": 58,
+          "18": 2
+        },
+        "nRuns": 60
+      },
+      {
+        "driver": "KUB",
+        "realPosition": 19,
+        "modalPosition": 19,
+        "modalShare": 1.0,
+        "meanPosition": 19.0,
+        "distribution": {
+          "19": 60
+        },
+        "nRuns": 60
+      },
+      {
+        "driver": "GRO",
+        "realPosition": 20,
+        "modalPosition": 20,
+        "modalShare": 1.0,
+        "meanPosition": 20.0,
+        "distribution": {
+          "20": 60
+        },
+        "nRuns": 60
+      }
+    ],
     "focusStrategy": {
       "real": [
         {

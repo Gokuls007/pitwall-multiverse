@@ -2899,3 +2899,51 @@ an arbitrary slope. So it is strongly asymmetric here, just not in the
 direction proposed.
 
 Frontend 10 tests, backend 175.
+
+### 2026-08-04 — Classification shows a distribution, not an order
+
+Built `Classification` to render a **per-driver finishing-position
+distribution** rather than a single alternate order. This is the panel where
+spec 6.10 either lands or quietly collapses into a point estimate, and there
+was a concrete incoherence waiting if it collapsed: the gap chart beside it
+draws a per-lap *median* trace, which is no universe any seed produced. VER's
+median trace ends ~0.6s adrift while the ensemble has him winning 20% of
+runs. Those are not contradictory — they describe different objects — but
+placing one definite "alternate finishing order" next to that median would
+invite reading them as one answer, and a reader would be right to call it
+incoherent.
+
+So reality is rendered as a position (outlined in `--annotation`) and the
+alternate as a spread (ink tints by share), which are visibly different kinds
+of thing. Where an outcome is genuinely near-certain the bar collapses to one
+cell on its own — more informative than asserting certainty everywhere.
+
+Exported `counterfactual.classification`: per driver, the full position
+distribution across the 60-seed ensemble, modal position and share, mean
+position, and the real finishing position. Read, not derived — same discipline
+as the tyre-age fix.
+
+What it surfaces, including unflattering things:
+
+| Driver | Real | Alternate spread |
+|---|---|---|
+| HAM | P1 | P1 80% / P2 20% |
+| VER | P2 | P1 20% / P2 80% |
+| VET | P3 | P3 57% / P4 43% |
+| BOT | P8 | P9 7% / **P10 83%** / P11 8% / P12 2% |
+
+BOT is a genuine model error left visible: he really finished P8, the model
+puts him at P10 in 83% of runs. A panel showing one order would have shown
+"P10" flatly; showing the distribution makes clear the model is confidently
+wrong there rather than uncertain.
+
+Also corrected the README's phase framing, which undersold by omission: the
+checklist reading "Phase 5 unbuilt" invites inferring abandonment rather than
+scoping. Added a paragraph stating the API was deferred deliberately, that
+the interaction loop is complete without it (the frontend renders real
+simulations precomputed through the same pipeline functions the API would
+call), and that given the choice between an API serving an unvalidated
+simulator and a validated simulator behind a fixture, the second is the more
+honest artifact.
+
+Frontend 10 tests, backend 159.
