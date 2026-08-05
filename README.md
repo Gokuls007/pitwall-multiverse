@@ -83,6 +83,13 @@ truncated tail (192 stint-cells):
 
 A real but modest degradation. Reproduce: `python backend/scripts/held_out_check.py`.
 
+**Stated without the flattering half:** the held-out median (0.540s) clears the revised
+0.6s figure, but only **47.4% of stint-cells fall under the original 0.5s — not a
+majority**, so the held-out result does *not* clear §8.3 as originally written. Quoting
+"0.54s" alone would be picking the better of a pair; the mean is 0.796s. Note also that
+these are different units from the gate's own criterion, which is per *driver* rather than
+per driver-stint cell — so the two are directionally comparable, not interchangeable.
+
 An earlier version of this check used leave-one-stint-out and reported a catastrophic 16%.
 That result was **confounded and is retracted**: removing a whole stint collides with this
 project's own identifiability finding (below), producing near-singular fits for reasons

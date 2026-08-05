@@ -2947,3 +2947,47 @@ simulator and a validated simulator behind a fixture, the second is the more
 honest artifact.
 
 Frontend 10 tests, backend 159.
+
+### 2026-08-04 — Sixth instance of the same shape: a number quoted under a different framing
+
+External review caught a resume-line summary quoting "0.54s held-out lap-time MAE." That
+is the *median* of a pair whose mean is 0.796s — the flattering half, quoted without
+saying which statistic it was. Corrected to "0.80s mean / 0.54s median".
+
+The sharper half of the correction, now stated in the README rather than left implicit:
+**47.4% of held-out stint-cells fall under 0.5s, which is not a majority, so the held-out
+result does not clear §8.3 as originally written.** The revised 0.6s figure it does clear.
+Also noted there that the held-out check counts driver-*stint* cells while the gate counts
+*drivers*, so the two are directionally comparable rather than interchangeable — a
+denominator mismatch of exactly the kind that produced an earlier error in this file (16%
+of cells compared against 55-60% of drivers).
+
+Worth recording as a pattern rather than an incident, because this is the sixth instance
+of one shape:
+
+1. Compound rank-shift — a value derived under one indexing, read under another.
+2. Noise-in-metric — MAE computed on a sampled realisation, reported as prediction error.
+3. Stale clamp heuristic — a detection rule written for the equality clamp, applied to the
+   floor clamp.
+4. The 25% win fraction — measured at `MIN_FOLLOWING_GAP_S = 0.3`, quoted after the refit
+   to 0.580.
+5. Fabricated tyre age — derived from stint length, displayed as observed age.
+6. This one — median quoted as though it were the headline figure.
+
+None of these were carelessness in the moment; each was a number that travelled from where
+it was derived to where it was used, losing its framing on the way. Two structural answers
+are now in place: the **parameter fingerprint** (fixtures carry the constants they were
+generated under, and a test fails when those drift from live code) and the **read-don't-
+derive** discipline with tests pinning it. The remaining defence is procedural — re-derive
+before quoting, and state which statistic a number is whenever a pair exists.
+
+Also merged: `master` was carrying the Phase 0 placeholder README while 16 commits of
+Phase 4, the frontend, and every validation claim sat on an unmerged working branch. A
+reader checking the README's numbers against the default branch would have found neither
+the numbers nor the code that produces them — the exact failure the numbers were meant to
+guard against. Merged to `master` (06e6020), both spent branches deleted, 161 backend and
+10 frontend tests passing on the default branch.
+
+**Not pushed.** No git remote is configured and `gh` is not installed, so nothing has left
+this machine. Creating the remote is a publishing decision (account, name, visibility) and
+is deliberately left to the human running the project rather than done unilaterally.
