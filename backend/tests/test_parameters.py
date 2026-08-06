@@ -228,7 +228,11 @@ def _fit(race_key: str):
 def test_tyre_degradation_rates_are_positive(entry):
     """Spec 6.3 acceptance criterion: degradation rates must be positive on
     every catalogued race. Any negative slope must have been caught and
-    corrected (pooled fallback or flat 0.0), never reported as-is."""
+    corrected by a pooled fallback tier, never reported as-is.
+
+    See `test_no_cell_has_a_zero_degradation_slope` for the stronger form: `>= 0`
+    used to be satisfiable by a `flat_zero` tier, which is not a correction but a
+    different impossible answer."""
     params = _fit(entry.race_key)
     for driver, dp in params.drivers.items():
         for compound, model in dp.tyre_models.items():
@@ -239,7 +243,7 @@ def test_tyre_degradation_rates_are_positive(entry):
 
 
 # A post-clip positivity check alone is true by construction — the fallback
-# chain (pooled estimate, or flat 0.0) only ever produces non-negative
+# chain (pooled estimates only, since flat-zero was removed) only ever produces non-negative
 # values, so it can't fail regardless of whether the underlying fit is any
 # good. These two tests check what actually matters: how much of the
 # catalogue's degradation model came from real per-driver regressions
@@ -256,7 +260,7 @@ def test_tyre_degradation_rates_are_positive(entry):
 # isn't testing anything — 0.40 sits comfortably above the observed range
 # with headroom for ordinary variation, while still catching a race like
 # 2018 Australian GP (dropped from the catalogue after its shown tyre cells
-# were ~100% flat-zero fallback) immediately rather than silently.
+# were ~100% fallback) immediately rather than silently.
 MAX_FALLBACK_FRACTION = 0.40
 # Chosen before looking at per-race results — well above the 50% a
 # pure-noise (zero true signal) population would produce, so it actually
@@ -275,7 +279,7 @@ def test_fallback_fraction_is_bounded(entry):
     summary = params.fit_diagnostics["tyre_cell_provenance"]
     assert summary["fallback_fraction"] <= MAX_FALLBACK_FRACTION, (
         f"{entry.race_key}: {summary['n_fallback']}/{summary['n_total_cells']} driver/compound "
-        f"cells needed a fallback (pooled or flat-zero) — this race's tyre model is mostly "
+        f"cells needed a pooled fallback — this race's tyre model is mostly "
         f"fallback values, not fitted ones."
     )
 
@@ -366,3 +370,95 @@ def test_persistence_round_trips():
         assert round_tripped.drivers[driver].base_pace_s == pytest.approx(
             params.drivers[driver].base_pace_s
         )
+
+
+@pytest.mark.parametrize("entry", CATALOGUE, ids=lambda e: e.race_key)
+def test_no_cell_has_a_zero_degradation_slope(entry):
+    """No driver/compound cell may report a degradation rate of exactly zero.
+
+    `>= 0` was the wrong invariant. It was satisfied by a terminal `flat_zero`
+    fallback tier, which is not a correction of an impossible value — it is a
+    different impossible value, and unlike a negative slope it looks harmless.
+    A tyre that does not wear is not conservative; it is the one thing a tyre
+    never does.
+
+    The cost of getting this wrong was concrete and reached the product. 2019
+    Hungary VER's SOFT cell had 2 laps of his own, so it needed the pooled tier,
+    but the pool was gated on `DriverJointFit.is_identified` — true for 2 of 20
+    drivers at that race — and neither of those two had enough SOFT laps. So the
+    cell fell through to 0.0000 s/lap, r2 = nan. The model believed his softs
+    stayed ~1.5s/lap faster than his hards at any age, and 4.6s/lap faster past
+    the hard's cliff. That produced the largest counterfactual in the catalogue:
+    a 30-lap soft stint "winning" 2019 Hungary by about a minute.
+
+    Every existing guard passed while that was true. The fallback-fraction
+    ceiling is an *aggregate* check and Hungary's 19% sat well under the 40% cap;
+    the positivity check is satisfied by zero; the raw-slope check looks at
+    `raw_own_slope`, which for this cell was `None`. An aggregate cannot catch a
+    single catastrophic cell, and this is the per-cell guard.
+    """
+    params = _fit(entry.race_key)
+    zero_cells = [
+        f"{driver} {compound.value}"
+        for driver, dp in params.drivers.items()
+        for compound, model in dp.tyre_models.items()
+        if model.linear_deg_s_per_lap == 0.0
+    ]
+    assert not zero_cells, (
+        f"{entry.race_key}: {len(zero_cells)} cell(s) report a degradation rate of exactly "
+        f"zero, which is physically impossible: {zero_cells[:6]}"
+    )
+
+
+@pytest.mark.parametrize("entry", CATALOGUE, ids=lambda e: e.race_key)
+def test_the_flat_zero_fallback_tier_is_unreachable(entry):
+    """The provenance side of the same invariant.
+
+    Checked separately from the value, because a future edit could reintroduce
+    the tier with some small non-zero default and the value test would pass while
+    the reasoning had regressed. `flat_zero` must not appear as a provenance at
+    all — the terminal tier is `catalogue_pooled`.
+    """
+    by_driver = _fit(entry.race_key).fit_diagnostics["tyre_cell_provenance"]["by_driver"]
+    provenances = {cell["provenance"] for cells in by_driver.values() for cell in cells.values()}
+    assert "flat_zero" not in provenances, f"{entry.race_key}: flat_zero tier is reachable again"
+    assert provenances <= {
+        "own_fit",
+        "pooled_implausible",
+        "pooled_insufficient_samples",
+        "catalogue_pooled",
+    }, f"{entry.race_key}: unknown provenance in {provenances}"
+
+
+def test_compound_slope_priors_match_the_catalogue():
+    """Drift guard on the committed catalogue-wide pooled slopes.
+
+    These are the terminal fallback tier, so they are a declared constant rather
+    than something recomputed at fit time (`fit_all` runs one race at a time, by
+    design). Same pattern as the other fitted constants: if a refit moves them, a
+    test fails rather than the number quietly going stale.
+
+    Fix on failure: re-run `python backend/scripts/fit_compound_slope_priors.py`
+    and paste the values it prints.
+    """
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+    from fit_compound_slope_priors import fit_priors
+
+    measured = fit_priors()
+    assert measured, "no usable cells across the catalogue"
+
+    for compound, (slope, _cells, _laps) in measured.items():
+        committed = tyre.CATALOGUE_POOLED_SLOPE_S_PER_LAP.get(compound)
+        assert committed is not None, f"{compound} is missing from the committed table"
+        assert committed == pytest.approx(slope, abs=5e-5), (
+            f"{compound}: committed prior {committed} but the catalogue now fits {slope:.5f}. "
+            "Re-run scripts/fit_compound_slope_priors.py."
+        )
+
+    # And the values must themselves be physically possible — this is the
+    # terminal tier, so nothing downstream will correct them.
+    for compound, slope in tyre.CATALOGUE_POOLED_SLOPE_S_PER_LAP.items():
+        assert 0 < slope <= tyre.MAX_PLAUSIBLE_SLOPE_S_PER_LAP, f"{compound}: {slope} s/lap"

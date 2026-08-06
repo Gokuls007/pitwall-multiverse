@@ -325,7 +325,46 @@ def fit_race_parameters(
         diagnostics["fuel"] = {"method": "pooled_regression", **pooled_fuel_diagnostics}
 
     # Cross-driver pooled compound fits, for sparse (driver, compound) fallback.
-    pooled_compounds = tyre.pool_compound_fits(joint_fits)
+    #
+    # Built from a PRELIMINARY pass 2 (fuel effect fixed, no pool available) rather
+    # than from pass 1's joint fits. The pass-1 version had a hole that put an
+    # impossible number into the product -- it gated on `is_identified`, true for
+    # only 2 of 20 drivers at Hungary, so SOFT never entered the pool and VER's
+    # SOFT cell fell all the way through to a degradation rate of exactly zero.
+    # See `tyre.pool_compound_fits_from_cells` for the full account.
+    #
+    # The extra pass is one lstsq per driver and buys correctly-signed,
+    # correctly-ordered pooled slopes from every driver who ran the compound,
+    # instead of from the handful who happened to revisit one.
+    preliminary_cells: dict[Compound, list[tyre.CompoundFit]] = {}
+    for driver, frame in laps_frames.items():
+        if driver in insufficient_data_drivers:
+            continue
+        try:
+            _, _, prelim_models, _, prelim_provenance = tyre.fit_driver_final(
+                frame, fuel_effect_s_per_lap, {}
+            )
+        except Exception:  # noqa: BLE001 - a driver we can't prefit simply doesn't contribute
+            continue
+        for compound, cell in prelim_provenance.items():
+            if cell.provenance != "own_fit":
+                continue
+            slope = cell.final_slope
+            if not (0 <= slope <= tyre.MAX_PLAUSIBLE_SLOPE_S_PER_LAP):
+                continue
+            preliminary_cells.setdefault(compound, []).append(
+                tyre.CompoundFit(
+                    offset=prelim_models[compound].base_offset_s,
+                    slope=slope,
+                    n_observations=prelim_models[compound].n_observations,
+                )
+            )
+    pooled_compounds = tyre.pool_compound_fits_from_cells(preliminary_cells)
+    diagnostics["tyre_pool_source"] = {
+        "method": "fuel_fixed_preliminary_pass2",
+        "cells_by_compound": {c.value: len(v) for c, v in sorted(preliminary_cells.items(), key=lambda kv: kv[0].value)},
+        "pooled_slope_s_per_lap": {c.value: round(f.slope, 5) for c, f in sorted(pooled_compounds.items(), key=lambda kv: kv[0].value)},
+    }
 
     # Pass 2: finalize base pace + tyre models with the race-level fuel effect fixed.
     driver_params: dict[str, DriverParams] = {}
@@ -478,6 +517,36 @@ def fit_race_parameters(
         fitted_at=datetime.now(timezone.utc),
         fit_diagnostics=diagnostics,
     )
+
+
+def tyre_model_digest(params: RaceParameters) -> str:
+    """A short stable digest of every driver/compound degradation cell.
+
+    The generated fixtures carry a `paramFingerprint` so that a refit fails a
+    test instead of quietly leaving stale numbers in the UI (Rule 3). That
+    fingerprint listed the pit-lane loss, overtake difficulty, dirty-air pair,
+    the following-gap floor and the AR(1) phi — and **not the tyre models**. So
+    when the degradation fallback chain was corrected, every fixture in the
+    catalogue became stale and no fingerprint test could have noticed: the change
+    that mattered most was the one the guard did not cover.
+
+    Hashed rather than enumerated because there are ~40 cells per race and the
+    fingerprint is stored on all 103 files. Rounded before hashing so
+    floating-point noise below the level anyone would act on doesn't produce
+    spurious staleness.
+    """
+    import hashlib
+
+    parts: list[str] = []
+    for driver in sorted(params.drivers):
+        dp = params.drivers[driver]
+        for compound in sorted(dp.tyre_models, key=lambda c: c.value):
+            m = dp.tyre_models[compound]
+            parts.append(
+                f"{driver}|{compound.value}|{m.base_offset_s:.5f}|{m.linear_deg_s_per_lap:.6f}|"
+                f"{m.cliff_lap}|{'' if m.cliff_deg_s_per_lap is None else f'{m.cliff_deg_s_per_lap:.6f}'}"
+            )
+    return hashlib.sha256(";".join(parts).encode("utf-8")).hexdigest()[:16]
 
 
 def fit_catalogue_with_pooled_dirty_air(snapshots: list[RaceSnapshot]) -> dict[str, RaceParameters]:

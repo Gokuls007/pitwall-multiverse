@@ -18,6 +18,7 @@ from pitwall.domain.race import LapRecord, RaceParameters, RaceSnapshot
 from pitwall.domain.result import LapState, SimulationResult
 from pitwall.simulation.engine import DIRTY_AIR_FLAG_THRESHOLD_S, _final_classification, _track_status_for_lap
 from pitwall.simulation.lap_time import ar1_noise_s, compose_lap_time_s
+from pitwall.simulation.rng import DrawTable
 from pitwall.simulation.pit import pit_stop_noise_s
 from pitwall.simulation.position import compute_gaps_to_leader, reorder_pitting_drivers, resolve_positions
 from pitwall.simulation.rng import make_rng
@@ -89,6 +90,7 @@ def fork_and_simulate(
     grid_position = {d.code: d.grid_position for d in snapshot.drivers}
     retired_on_lap = {d.code: d.retired_on_lap for d in snapshot.drivers}
     real_cum = real_cumulative_times(snapshot)
+    draws = DrawTable(seed, drivers_with_laps, snapshot.total_laps)
 
     lap_states: list[LapState] = []
     notes: list[str] = [
@@ -216,12 +218,19 @@ def fork_and_simulate(
                 rng=rng,
                 include_noise=False,
             )
+            # Common random numbers (simulation/rng.py): keyed on (driver, lap),
+            # not consumed in call order, so a paired baseline run draws the same
+            # noise on every lap where nothing about this driver differs.
             if include_noise:
-                new_noise = ar1_noise_s(rng, driver_params.pace_std_s, prev_noise_s.get(driver, 0.0))
+                new_noise = ar1_noise_s(
+                    draws.pace(driver, lap_number),
+                    driver_params.pace_std_s,
+                    prev_noise_s.get(driver, 0.0),
+                )
                 prev_noise_s[driver] = new_noise
                 lap_time += new_noise
             if (record.is_in_lap or record.is_out_lap) and include_noise:
-                lap_time += pit_stop_noise_s(rng)
+                lap_time += pit_stop_noise_s(draws.pit(driver, lap_number))
             if record.is_in_lap or record.is_out_lap:
                 pitted_this_lap.add(driver)
 
@@ -251,6 +260,8 @@ def fork_and_simulate(
                 clamped_this_lap=clamped_this_lap,
                 pre_clamp_lap_times=pre_clamp_lap_times,
                 clamp_penalty_this_lap=clamp_penalty_this_lap,
+                draws=draws,
+                lap_number=lap_number,
             )
 
         if is_under_sc:

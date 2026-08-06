@@ -289,3 +289,90 @@ def test_shifting_a_stop_renumbers_the_following_stint_through_its_own_in_lap(hu
             assert current.tyre_life == previous.tyre_life + 1, (
                 f"lap {lap}: tyre age jumped {previous.tyre_life} -> {current.tyre_life}"
             )
+
+
+def test_common_random_numbers_shrink_the_paired_band(hungary_2019):
+    """Common random numbers must reduce paired variance, not just be present.
+
+    Without them, a counterfactual and its override-free baseline stop consuming
+    the generator in step the moment a lap time differs — one takes a pit-noise
+    draw the other doesn't, an overtake resolves differently — and from there
+    every subsequent draw differs. The paired difference then carries draw-order
+    divergence on top of the decision's effect, and the p10-p90 band reports
+    their sum as if it were uncertainty about the decision.
+
+    The measurable consequence, and what this asserts: on laps *before* the fork
+    the two runs are the same history, so a correctly paired design must give a
+    difference of exactly zero there for every seed. Beyond the fork the band
+    should be narrower than the unpaired equivalent, because the shared component
+    of the noise cancels.
+    """
+    snapshot, params = hungary_2019
+    decision = ChangePitLap(driver="VER", original_lap=67, new_lap=60)
+    fork = decision.first_affected_lap
+
+    def series(result):
+        return {s.lap_number: s.cumulative_time_s for s in result.lap_states if s.driver == "VER"}
+
+    paired_spread = []
+    for seed in range(12):
+        alt = series(simulate_counterfactual(snapshot, params, decision, seed=seed))
+        base = series(fork_and_simulate(snapshot, params, {}, fork, seed=seed))
+
+        # Pre-fork laps are reality copied verbatim in both, so identical.
+        for lap in range(1, fork):
+            if lap in alt and lap in base:
+                assert alt[lap] == base[lap], f"seed {seed} lap {lap}: pre-fork histories differ"
+
+        last = max(set(alt) & set(base))
+        paired_spread.append(alt[last] - base[last])
+
+    # Pairing against a *different* seed is the unpaired comparison: same
+    # decision, same everything, but the noise no longer cancels.
+    unpaired_spread = []
+    for seed in range(12):
+        alt = series(simulate_counterfactual(snapshot, params, decision, seed=seed))
+        base = series(fork_and_simulate(snapshot, params, {}, fork, seed=seed + 100))
+        last = max(set(alt) & set(base))
+        unpaired_spread.append(alt[last] - base[last])
+
+    paired_range = max(paired_spread) - min(paired_spread)
+    unpaired_range = max(unpaired_spread) - min(unpaired_spread)
+    assert paired_range < unpaired_range, (
+        f"pairing did not reduce spread: paired {paired_range:.3f}s vs "
+        f"unpaired {unpaired_range:.3f}s — common random numbers are not engaging"
+    )
+
+
+def test_a_no_op_decision_is_still_byte_exact_under_common_random_numbers(hungary_2019):
+    """The Phase 4 invariant, re-asserted after the RNG changed.
+
+    Common random numbers moved every draw from call order to a
+    `(driver, lap, channel)` lookup. That is exactly the kind of change that
+    could silently break the no-op equivalence this project pins byte-for-byte,
+    and the fixture layer now depends on it: `deltaVsSimulatedReal` for the
+    reality-reproducing candidate must be exactly 0.000, which only holds if a
+    no-op decision and an override-free fork remain the same computation.
+
+    Asserted with noise ON here, unlike the original no-op test — the whole point
+    of the draw table is that the noise is now positionally keyed, so the two
+    runs must agree even with it engaged.
+    """
+    snapshot, params = hungary_2019
+    no_op = ChangePitLap(driver="VER", original_lap=67, new_lap=67)
+    fork = no_op.first_affected_lap
+
+    for seed in (0, 7):
+        via_decision = simulate_counterfactual(
+            snapshot, params, no_op, seed=seed, include_noise=True
+        )
+        via_fork = fork_and_simulate(
+            snapshot, params, {}, fork, seed=seed, include_noise=True
+        )
+        assert len(via_decision.lap_states) == len(via_fork.lap_states)
+        for a, b in zip(via_decision.lap_states, via_fork.lap_states, strict=True):
+            assert (a.driver, a.lap_number) == (b.driver, b.lap_number)
+            assert a.cumulative_time_s == b.cumulative_time_s, (
+                f"seed {seed} {a.driver} lap {a.lap_number}: "
+                f"{a.cumulative_time_s} != {b.cumulative_time_s}"
+            )

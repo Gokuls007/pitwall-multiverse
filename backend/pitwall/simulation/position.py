@@ -18,6 +18,14 @@ from __future__ import annotations
 import numpy as np
 
 from pitwall.simulation.overtake import pass_probability, resolve_pass
+from pitwall.simulation.rng import DrawTable
+
+
+def _roll_for(draws: DrawTable | None, rng, driver: str, lap_number: int | None):
+    """The attacker's overtake roll source for this lap."""
+    if draws is None or lap_number is None:
+        return rng
+    return draws.passing(driver, lap_number)
 
 # Reuses the exact threshold `parameters/overtaking.py` fits circuit
 # overtake_difficulty against, so the simulator's notion of "close enough to
@@ -82,6 +90,13 @@ def resolve_positions(
     overtake_difficulty: float,
     rng: np.random.Generator,
     clamped_this_lap: set[str] | None = None,
+    # Common random numbers: when supplied, each attacker's overtake roll is
+    # looked up by (driver, lap) instead of consumed from `rng` in call order,
+    # so two paired runs draw the same number on any lap where nothing differs.
+    # See simulation/rng.py. `rng` stays the fallback for callers without a
+    # table (tests, and the noise-off validation replay where it never fires).
+    draws: "DrawTable | None" = None,
+    lap_number: int | None = None,
     pre_clamp_lap_times: dict[str, float] | None = None,
     clamp_penalty_this_lap: dict[str, float] | None = None,
 ) -> list[str]:
@@ -160,14 +175,14 @@ def resolve_positions(
             # difficulty-gated fight, and never the stuck-behind clamp (a
             # backmarker slow to move over doesn't force the faster car
             # behind it down to its pace).
-            if resolve_pass(rng, BLUE_FLAG_YIELD_PROBABILITY):
+            if resolve_pass(_roll_for(draws, rng, behind, lap_number), BLUE_FLAG_YIELD_PROBABILITY):
                 order[i - 1], order[i] = order[i], order[i - 1]
             continue
 
         pace_delta_s = lap_times_this_lap[ahead] - lap_times_this_lap[behind]
         if pace_delta_s > 0:
             probability = pass_probability(pace_delta_s, overtake_difficulty)
-            if resolve_pass(rng, probability):
+            if resolve_pass(_roll_for(draws, rng, behind, lap_number), probability):
                 order[i - 1], order[i] = order[i], order[i - 1]
                 continue
 

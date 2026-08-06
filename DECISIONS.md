@@ -3319,3 +3319,109 @@ error 7%, fit provenance 6%. The identified fix is not compression --
 per-race constants repeated on all 124 candidates, so hoisting them into `meta`
 recovers ~9%. Not done here, to keep the change set to the review items. The
 650KB ceiling is a regression guard, not a target.
+
+### 2026-08-06 — the flat-zero fallback tier, and common random numbers
+
+**A degradation rate of exactly zero was reachable, and it drove the demo.**
+2019 Hungary VER's SOFT cell came out with n=2, slope 0.0000 s/lap, r2=nan. Not
+a weak fit — the terminal `flat_zero` tier of the fallback chain firing. Zero is
+the one value a degradation rate can never take, and it is worse than a negative
+one because it looks harmless.
+
+Two separate faults, not one:
+
+1. **The gate emptied the pool.** `pool_compound_fits` only accepted drivers with
+   `DriverJointFit.is_identified` — true only for drivers who revisited a
+   compound at a different lap-number offset, which at Hungary is **2 of 20**.
+   Neither had enough SOFT laps, so SOFT never entered the pool and VER's cell
+   fell through every tier. Ill-conditioning is a statement about separating
+   *that driver's* fuel effect from *that driver's* degradation; for pooling, the
+   race-level fuel effect is already fixed, so the condition no longer applies.
+2. **The pool was built from the worse estimates.** It pooled *pass-1 joint*
+   slopes, which carry the fuel confound and are biased negative. At Hungary the
+   pass-1 SOFT slopes were -1.90, -1.35, -1.31, -1.30 and -0.63 s/lap across five
+   drivers, all discarded by the positivity filter as "noisy". They were not
+   noisy, they were confounded. Refitting the same drivers with the race-level
+   fuel effect held fixed makes **34 of 34 cells physically plausible — not one
+   negative** — and recovers the ordering HARD 0.036 < MEDIUM 0.050 < SOFT 0.064.
+
+The pool is now assembled from a preliminary pass-2 fit (fuel fixed, no pool
+available), one extra lstsq per driver. The terminal tier is the compound's
+catalogue-wide pooled slope, fitted by `scripts/fit_compound_slope_priors.py` and
+pinned by a drift test. `flat_zero` is gone as a value *and* as a provenance,
+both asserted.
+
+**Result: VER 67->40 went from -52.8s to -16.2s and is no longer implausible.**
+36 seconds of that answer was pure artifact. Across the catalogue there are now
+zero flat-zero and zero catalogue-tier cells — every fallback is a real pooled
+estimate — and `unexplained` as a plausibility cause has dropped from 2 cases to
+**zero**. Both former cases were downstream of this bug: correcting the tyre
+models changed the fitted pit-lane loss (20.85s -> 20.34s, since pit loss is
+measured against expected clean pace, which depends on the tyre models), which
+moved the plausibility bound, and both fell inside it.
+
+**Why every existing guard missed it.** The fallback-fraction ceiling is an
+*aggregate*: Hungary sat at 19% against a 40% cap, comfortably passing while one
+cell was catastrophically wrong. Positivity is satisfied by zero. The raw-slope
+check reads `raw_own_slope`, which for this cell was `None`. An aggregate cannot
+catch a local catastrophe, and the cell the demo happened to rely on was the one
+that was broken. `test_no_cell_has_a_zero_degradation_slope` is the per-cell
+guard, and `fitProvenance` is the per-candidate one.
+
+**A guard hole found while fixing it.** The fixtures' `paramFingerprint` listed
+the pit-lane loss, overtake difficulty, dirty-air pair, following-gap floor and
+AR(1) phi — and **not the tyre models**. So correcting the degradation chain
+invalidated all 103 files and no fingerprint test could have noticed: the change
+that mattered most was the one the guard did not cover. Added
+`tyreModelDigest`, a hash over every driver/compound cell. It immediately earned
+itself by catching the stale Phase 5 `race.json`.
+
+**Common random numbers.** Pairing by seed cancelled the systematic replay error
+but not the stochastic draws: once the decision changes a lap time, the two runs
+stop consuming the generator in step and every subsequent draw differs. The
+paired band was reporting draw-order divergence on top of the decision's effect.
+
+`DrawTable` moves every random quantity from call order to a
+`(seed, driver, lap, channel)` lookup, so any lap on which nothing differs draws
+an identical number in both runs. Implemented as pre-drawn arrays rather than a
+generator per draw — keying a fresh `default_rng` per `(driver, lap)` would be
+~1,400 `SeedSequence` spawns per simulation across 485,100 simulations; five
+`(n_drivers, n_laps)` arrays cost ~7,000 doubles and are cheaper than the
+per-call draws they replace. Channels are separate substreams so a pit stop's
+normal and its slow-stop uniform can't collide, and appending a channel later
+cannot shift an existing one's numbers.
+
+Measured p10-p90 width of the final decision effect, paired against unpaired:
+
+| candidate | median | paired | unpaired | narrower by |
+|---|---|---|---|---|
+| 2019 Hungary HAM 48->47 | +0.28s | **1.29s** | 17.93s | 93% |
+| 2019 Hungary VER 67->60 | -9.57s | 5.56s | 14.18s | 61% |
+| 2019 Hungary HAM 48->40 | +9.11s | 13.18s | 25.94s | 49% |
+
+The demo candidate's band was 18s wide on a 0.3s effect — it was almost entirely
+noise about noise. It is now 1.29s, and the hover readout on the opening view
+reads `+0.14s lost, p10-p90 -0.94 to +0.35s`. Verified in the browser.
+
+A stronger invariant came free: `test_a_no_op_decision_is_still_byte_exact_under_common_random_numbers`
+asserts the Phase 4 no-op equivalence **with noise on**, which the old
+sequential-draw design could not have satisfied.
+
+**One assertion tightened, one thing not done.** The unexplained-cause cap was
+0.5% against an observed 0.025% — 20x headroom is a rubber stamp, the same shape
+as the 40% fallback ceiling that passed while Hungary's one broken cell sat at
+19%. Now 0.1%. The `meta`-hoisting of per-driver constants out of every candidate
+(~9% of payload) is still not done; it is queued for the next regeneration.
+
+**What did NOT change, and why it matters.** VER still has no defensible
+counterfactual at Hungary. That is not the tyre bug — it is that he ran three
+compounds once each, so every stint ended at its own observed maximum by
+construction and any shift in any direction leaves the evidence immediately. The
+V-shaped extrapolation curve has **zero width** for him: reality is a point, not
+a plateau. HAM has room precisely because he ran the same compound in more than
+one stint, which lifts his observed maximum above any single stint's length —
+and compound revisit is the same property that makes fuel and degradation
+separable at all (it is literally `is_identified`). So the drivers whose tyre
+models are best identified are exactly the drivers whose counterfactuals are
+defensible, and VER at Hungary fails both tests for one reason. Queued for the
+README in Phase 8.

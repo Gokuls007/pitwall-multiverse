@@ -592,12 +592,13 @@ export default function App() {
                 )}
                 {degenerateCells.map((cell) => (
                   <p key={cell.compound} className={selected.plausibility.implausible ? "mt-1" : ""}>
-                    Its {cell.compound} degradation was fitted from {cell.nObservations}{" "}
-                    {cell.nObservations === 1 ? "lap" : "laps"}
+                    {driver} ran only {cell.nObservations}{" "}
+                    {cell.nObservations === 1 ? "lap" : "laps"} on the {cell.compound}, too few to
+                    fit his own degradation, so it comes from the cross-driver pooled estimate
                     {cell.linearDegSPerLap === 0
-                      ? " and came out as exactly zero, so the model believes that tyre never wears"
+                      ? " — and that came out as exactly zero, meaning the model believes the tyre never wears"
                       : ""}
-                    — and this answer runs {cell.postForkLaps} laps on it.
+                    . This answer runs {cell.postForkLaps} laps on it.
                   </p>
                 ))}
                 {selected.plausibility.cause === "traffic" && (

@@ -62,7 +62,10 @@ def live_fingerprints() -> dict[str, dict]:
     """
     from pitwall.ingestion.catalogue import get_entry
     from pitwall.ingestion.loader import load_race
-    from pitwall.parameters.fit_all import fit_catalogue_with_pooled_dirty_air
+    from pitwall.parameters.fit_all import (
+        fit_catalogue_with_pooled_dirty_air,
+        tyre_model_digest,
+    )
 
     race_keys = sorted({path.name.split("__")[0] for path in _race_files()})
     result: dict[str, dict] = {}
@@ -77,6 +80,7 @@ def live_fingerprints() -> dict[str, dict]:
             "overtakeDifficulty": round(params.overtake_difficulty, 6),
             "dirtyAirMaxPenaltyS": round(params.dirty_air.max_penalty_s, 6),
             "dirtyAirDecayScaleS": round(params.dirty_air.decay_scale_s, 6),
+            "tyreModelDigest": tyre_model_digest(params),
         }
     return result
 
@@ -529,16 +533,23 @@ def test_every_implausible_answer_has_a_named_cause():
 
     assert implausible > 0, "no implausible candidates at all -- is the bound wired up?"
 
-    # Unexplained is a permitted verdict, not a passing grade. The two known
-    # cases (2021 Spanish HAM 28->12 and PER 57->44, both ~+58s lost, ~1.1s/lap,
-    # inside observed tyre age, well-fitted cells, pace-dominated) look like a
-    # genuine consequence of nursing a 30-lap stint after pitting 16 laps early
-    # -- extreme, but not obviously an artifact. The bound was deliberately not
-    # widened to make them disappear. What must not happen is this becoming a
-    # dumping ground: if the share grows, either the bound or the cause taxonomy
-    # is wrong and needs revisiting rather than tolerating.
+    # Unexplained is a permitted verdict, not a passing grade, and it currently
+    # never fires: the taxonomy accounts for all 2,419 implausible candidates
+    # (extrapolation 1,971, traffic 314, degenerate fit 134).
+    #
+    # It did fire before the degradation fallback chain was fixed -- 2021 Spanish
+    # HAM 28->12 and PER 57->44, both ~+58s with well-fitted cells and inside
+    # observed tyre age. Correcting the chain changed the fitted pit-lane loss
+    # (it is measured against expected clean pace, which depends on the tyre
+    # models), which moved the bound, and both fell inside it. So the residual
+    # was downstream of a real parameter bug rather than a genuine third cause.
+    # The guard stays because the next one might not be.
     share = len(unexplained) / max(1, total)
-    assert share < 0.005, (
+    # Tightened from 0.005 to just above the observed 0.00025 (2 of 8,085). A cap
+    # with 20x headroom is not a regression guard, it is a rubber stamp — the same
+    # shape of mistake as the fallback-fraction ceiling that sat at 40% while the
+    # race that mattered was at 19%.
+    assert share < 0.001, (
         f"{len(unexplained)} of {total} candidates ({share:.2%}) are implausible with no "
         "identified cause, which is too many to wave through: " + "; ".join(unexplained[:10])
     )

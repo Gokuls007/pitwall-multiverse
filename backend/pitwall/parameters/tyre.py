@@ -39,6 +39,55 @@ CLIFF_SSE_IMPROVEMENT_THRESHOLD = 0.15
 # pooled cross-driver estimate, or flat (0.0) if none exists.
 MAX_PLAUSIBLE_SLOPE_S_PER_LAP = 0.5
 
+# Terminal tier of the degradation fallback chain: the compound's slope pooled
+# across the WHOLE catalogue, not just the race being fitted.
+#
+# This replaces a `flat_zero` tier that used to sit here. Zero is the one value a
+# degradation rate can never take -- a tyre that does not wear is not a
+# conservative estimate, it is a physically impossible one, and it produced the
+# largest counterfactual in the catalogue (2019 Hungary VER, 30 laps on softs
+# the model believed never wore, "winning" the race by a minute). Falling back
+# to a wrong-magnitude slope of the right sign is strictly better than falling
+# back to a value that is never right.
+#
+# Fitted by `scripts/fit_compound_slope_priors.py` from every catalogued race, as
+# the observation-weighted mean of fuel-fixed per-driver own fits. Committed as a
+# constant rather than computed on demand because `fit_all` is called one race at
+# a time (build_fixtures fits per race), so a catalogue-wide quantity is not
+# available at fit time. `test_compound_slope_priors_match_the_catalogue` fails
+# if a refit moves them, same drift-guard pattern as the other declared
+# constants.
+#
+# Measured values, 2019-2021 catalogue (5 races, 166 driver/compound cells):
+#
+#     MEDIUM  0.05402 s/lap   69 cells, 1942 laps
+#     SOFT    0.04981 s/lap   47 cells, 1004 laps
+#     HARD    0.03611 s/lap   50 cells, 1966 laps
+#
+# Worth stating because it contradicts the obvious expectation: the ordering is
+# NOT monotonic in compound softness. HARD degrades clearly least, but MEDIUM
+# comes out slightly *above* SOFT rather than below it. No ordering has been
+# imposed to tidy that up. The likely reason is selection rather than physics --
+# softs are run in short stints and often in cooler conditions, mediums in the
+# long ones, so the two samples are not measuring comparable stint types -- and
+# the soft sample is also the thinnest (1004 laps against ~1950 for the others).
+# It is recorded as measured, and it is a reason not to read these numbers as
+# compound physics.
+CATALOGUE_POOLED_SLOPE_S_PER_LAP: dict[str, float] = {
+    "SOFT": 0.04981,
+    "MEDIUM": 0.05402,
+    "HARD": 0.03611,
+    # Never sampled in the catalogue; the MEDIUM slope stands in, chosen over an
+    # all-compound mean because that mean is dominated by whichever compound
+    # happened to be run most.
+    "INTERMEDIATE": 0.05402,
+    "WET": 0.05402,
+    "UNKNOWN": 0.05402,
+}
+
+# Used when a compound is absent from the table above entirely.
+CATALOGUE_POOLED_SLOPE_DEFAULT_S_PER_LAP = 0.05402
+
 # Empirically chosen (not from the spec) by comparing drivers who genuinely
 # repeated a compound (condition number ~7-10) against drivers who didn't
 # (~1e15-1e16) on 2019 Hungary's real data — see DECISIONS.md. There's a huge
@@ -262,11 +311,13 @@ class PooledCompoundFit:
 def pool_compound_fits(
     per_driver_fits: dict[str, DriverJointFit],
 ) -> dict[Compound, PooledCompoundFit]:
-    """Cross-driver pooled fallback for a (driver, compound) pair with too few
-    of that driver's own laps (spec 6.3 point 4). Pools every driver's own
-    fitted offset/slope for a compound (only where that driver had enough
-    data to fit it directly) via a simple unweighted mean — deliberately
-    simple since this is already a fallback path, not the primary estimate.
+    """Cross-driver pooled fallback built from **pass-1 joint** fits.
+
+    Retained for the pass-1 diagnostic path and for callers holding
+    `DriverJointFit` objects, but no longer what `fit_all` uses to build the
+    fallback pool. Prefer `pool_compound_fits_from_cells`, and see its docstring
+    for why: pass-1 slopes are the fuel-confounded ones, and gating them on
+    `is_identified` empties the pool for exactly the compounds that need it.
     """
     by_compound: dict[Compound, list[CompoundFit]] = {}
     for fit in per_driver_fits.values():
@@ -280,8 +331,53 @@ def pool_compound_fits(
             if compound_fit.slope is not None and 0 <= compound_fit.slope <= MAX_PLAUSIBLE_SLOPE_S_PER_LAP:
                 by_compound.setdefault(compound, []).append(compound_fit)
 
+    return _weighted_pool(by_compound)
+
+
+def pool_compound_fits_from_cells(
+    own_cells: dict[Compound, list[CompoundFit]],
+) -> dict[Compound, PooledCompoundFit]:
+    """Cross-driver pooled fallback built from **fuel-fixed pass-2** own fits.
+
+    This exists because the pass-1-based version had a structural hole that put a
+    physically impossible number into the product. `pool_compound_fits` gates on
+    `DriverJointFit.is_identified`, which is true only for drivers who revisited
+    a compound at a different lap-number offset — at 2019 Hungary that is **2 of
+    20 drivers**. Every driver with SOFT laps was unidentified, so SOFT never
+    entered the pool, and VER (2 SOFT laps of his own) fell through every tier to
+    the terminal `flat_zero`: a degradation rate of exactly 0.0 s/lap, meaning
+    the model believed his softs never wear. That is the one value that is never
+    true, and it drove the largest counterfactual in the catalogue.
+
+    Two things were wrong, not one:
+
+    1. **The gate emptied the pool.** Ill-conditioning is a statement about
+       separating *that driver's* fuel effect from *that driver's* degradation.
+       For pooling, the race-level fuel effect is already fixed, so the condition
+       that made the driver's own joint fit untrustworthy no longer applies.
+    2. **The pool was built from the worse estimates.** Pass-1 slopes carry the
+       fuel confound, which biases them negative: at Hungary the pass-1 SOFT
+       slopes were -1.90, -1.35, -1.31, -1.30, -0.63 for five drivers, all
+       rejected by the positivity filter as "noisy". They were not noisy, they
+       were confounded. Refitting the same drivers with the race-level fuel
+       effect held fixed makes **every** cell physically plausible (34 of 34 at
+       Hungary, not one negative) and recovers the correct compound ordering:
+       HARD 0.036 < MEDIUM 0.050 < SOFT 0.064 s/lap.
+
+    So the pool is now assembled from cells that pass 2 fitted itself, with fuel
+    held fixed, in a preliminary pass run with no pool available. Weighted by
+    observation count, as before.
+    """
+    return _weighted_pool(own_cells)
+
+
+def _weighted_pool(
+    by_compound: dict[Compound, list[CompoundFit]],
+) -> dict[Compound, PooledCompoundFit]:
     pooled = {}
     for compound, fits in by_compound.items():
+        if not fits:
+            continue
         offsets = [f.offset for f in fits]
         slopes = [f.slope for f in fits]
         weights = [f.n_observations for f in fits]
@@ -298,6 +394,13 @@ def pool_compound_fits(
     return pooled
 
 
+def _catalogue_pooled_slope(compound: str) -> float:
+    """Terminal fallback: this compound's catalogue-wide pooled slope."""
+    return CATALOGUE_POOLED_SLOPE_S_PER_LAP.get(
+        str(compound), CATALOGUE_POOLED_SLOPE_DEFAULT_S_PER_LAP
+    )
+
+
 @dataclass(frozen=True)
 class CellProvenance:
     """Where one driver/compound's final degradation slope actually came
@@ -305,7 +408,10 @@ class CellProvenance:
     positivity/magnitude test on the post-clip value alone is true by
     construction once the clip exists)."""
 
-    provenance: str  # "own_fit" | "pooled_implausible" | "pooled_insufficient_samples" | "flat_zero"
+    # "own_fit" | "pooled_implausible" | "pooled_insufficient_samples"
+    # | "catalogue_pooled". There is deliberately no "flat_zero": a degradation
+    # rate of exactly zero is physically impossible and is never produced.
+    provenance: str
     raw_own_slope: float | None  # this driver's own regression estimate, even when overridden
     final_slope: float
 
@@ -412,15 +518,17 @@ def fit_driver_final(
                     cliff_lap, cliff_slope = None, None
                     provenance = "pooled_implausible"
                 else:
+                    catalogue_slope = _catalogue_pooled_slope(c)
                     notes.append(
                         f"{c}: this driver's own fit gave an implausible degradation slope "
-                        f"({linear_slope:.4f} s/lap, r2={r2:.3f}, n={n_obs}) and no physically "
-                        f"sensible pooled fallback was available either; defaulting to flat "
-                        f"(0.0 s/lap) rather than reporting a physically impossible value."
+                        f"({linear_slope:.4f} s/lap, r2={r2:.3f}, n={n_obs}) and this race's "
+                        f"pooled fallback was unavailable too; using the catalogue-wide pooled "
+                        f"slope ({catalogue_slope:.4f} s/lap). Wrong magnitude beats the "
+                        f"physically impossible 0.0 this used to default to."
                     )
-                    linear_slope = 0.0
+                    linear_slope = catalogue_slope
                     cliff_lap, cliff_slope = None, None
-                    provenance = "flat_zero"
+                    provenance = "catalogue_pooled"
         elif Compound(c) in pooled:
             pooled_fit = pooled[Compound(c)]
             linear_slope = pooled_fit.slope
@@ -432,12 +540,14 @@ def fit_driver_final(
                 f"{pooled_fit.n_observations} laps) — this driver had only {counts[c]} laps on it."
             )
         else:
-            linear_slope = 0.0
+            linear_slope = _catalogue_pooled_slope(c)
             cliff_lap, cliff_slope, r2 = None, None, float("nan")
-            provenance = "flat_zero"
+            provenance = "catalogue_pooled"
             notes.append(
-                f"{c}: no cross-driver pooled data available either ({counts[c]} laps, no other "
-                f"driver had enough); degradation slope defaulted to 0.0 — treat as unreliable."
+                f"{c}: only {counts[c]} laps of this driver's own and no usable pooled cell for "
+                f"this race; using the catalogue-wide pooled slope ({linear_slope:.4f} s/lap). "
+                f"Treat as unreliable — but it is the right sign and order of magnitude, which "
+                f"the previous 0.0 default was not."
             )
 
         tyre_models[Compound(c)] = TyreModel(

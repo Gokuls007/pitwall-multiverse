@@ -116,20 +116,25 @@ describe("App", () => {
     render(<App />);
     await waitFor(() => expect(screen.getByText(/instead of lap/i)).toBeInTheDocument());
 
-    // VER's lap-67 stop moved to lap 40 is the artifact: -52s, produced by a
-    // SOFT degradation cell fitted from two laps with a rate of exactly zero.
+    // VER's lap-67 stop dragged to lap 1: 69 laps on a compound he ran twice,
+    // so his own degradation is unfittable and the answer leans entirely on the
+    // cross-driver pooled estimate. This used to be far worse — before the
+    // degradation fallback chain was corrected, moving that stop to lap 40 alone
+    // read -52s, because the cell had fallen through to a rate of exactly zero.
+    // It now reads -16s and is inside the bound, which is why this test has to
+    // reach for a genuinely extreme candidate to find a live artifact.
     await userEvent.selectOptions(screen.getByLabelText(/^driver$/i), "VER");
     await waitFor(() => expect(screen.getByLabelText(/stop to move/i)).toBeInTheDocument());
     await userEvent.selectOptions(screen.getByLabelText(/stop to move/i), "67");
     await waitFor(() => expect(screen.getByRole("slider")).toBeInTheDocument());
-    fireEvent.change(screen.getByRole("slider"), { target: { value: "40" } });
+    fireEvent.change(screen.getByRole("slider"), { target: { value: "1" } });
 
     await waitFor(() =>
       expect(screen.getByText(/past this race's plausibility bound/i)).toBeInTheDocument(),
     );
-    // The cause, specifically: two observations and a zero degradation rate.
-    expect(screen.getByText(/degradation was fitted from 2 laps/i)).toBeInTheDocument();
-    expect(screen.getByText(/never wears/i)).toBeInTheDocument();
+    // The cause, named: too few of his own laps, so the cell is pooled.
+    expect(screen.getByText(/ran only 2 laps on the SOFT/i)).toBeInTheDocument();
+    expect(screen.getByText(/cross-driver pooled estimate/i)).toBeInTheDocument();
   });
 
   it("splits the effect into pace and traffic rather than reporting one number", async () => {

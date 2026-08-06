@@ -123,7 +123,10 @@ from pitwall.counterfactual.strategy import (  # noqa: E402
 from pitwall.domain.decision import ChangePitLap  # noqa: E402
 from pitwall.ingestion.catalogue import CATALOGUE, get_entry  # noqa: E402
 from pitwall.ingestion.loader import load_race  # noqa: E402
-from pitwall.parameters.fit_all import fit_catalogue_with_pooled_dirty_air  # noqa: E402
+from pitwall.parameters.fit_all import (  # noqa: E402
+    fit_catalogue_with_pooled_dirty_air,
+    tyre_model_digest,
+)
 from pitwall.simulation.lap_time import AR1_PHI  # noqa: E402
 from pitwall.simulation.position import MIN_FOLLOWING_GAP_S  # noqa: E402
 from pitwall.validation.metrics import real_cumulative_times, real_gap_to_leader  # noqa: E402
@@ -139,7 +142,7 @@ OUT_DIR = Path(__file__).resolve().parents[2] / "frontend" / "src" / "fixtures" 
 EXCLUDED_FROM_GATE = {
     "2019_monaco": (
         "Weakest parameters in the catalogue: 30% of its driver/compound cells fall back "
-        "to pooled or flat estimates (roughly double the next-worst race), and it has the "
+        "to cross-driver pooled estimates (roughly double the next-worst race), and it has the "
         "highest unclamped signed error. Excluded from the Part 8.3 gate aggregate; still "
         "fitted, simulated and shown."
     )
@@ -587,6 +590,10 @@ def build_race(race_key: str, workers: int) -> dict:
         "overtakeDifficulty": round(params.overtake_difficulty, 6),
         "dirtyAirMaxPenaltyS": round(params.dirty_air.max_penalty_s, 6),
         "dirtyAirDecayScaleS": round(params.dirty_air.decay_scale_s, 6),
+        # Covers every driver/compound degradation cell. Added after correcting
+        # the degradation fallback chain invalidated all 103 files without any
+        # fingerprint test being able to notice.
+        "tyreModelDigest": tyre_model_digest(params),
     }
 
     real_finish = {d.code: d.finish_position for d in snapshot.drivers}
