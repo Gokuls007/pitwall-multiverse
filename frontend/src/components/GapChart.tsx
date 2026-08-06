@@ -41,6 +41,28 @@ import { AXIS_MARGIN, type LapAxis } from "./LapAxisPanes";
  */
 export const MIN_Y_EXTENT_S = 5;
 
+/**
+ * How many median-absolute-deviations of delta the comparison axis spans
+ * before values are treated as overflow.
+ *
+ * A plain min/max range does not work for the delta variable. When a pit stop
+ * falls inside the window, one timeline is in the pit lane while the other is
+ * on track, so the delta briefly reaches ~20s — a real effect, not an
+ * artifact, but on the demo case it is 4 laps out of 21 and it compressed the
+ * strategic region (0–2.5s) into 16px of 260. A literal 5th–95th percentile
+ * does not help either: at 18% of the sample the transient survives the
+ * percentile. MAD is robust to exactly this shape, and 6x it is generous
+ * enough not to clip ordinary variation.
+ */
+const ROBUST_MAD_MULTIPLE = 6;
+
+function median(values: number[]): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
 export type GapPoint = { lap: number; gap: number };
 export type AlternatePoint = {
   lap: number;
@@ -95,36 +117,32 @@ export default function GapChart({
     [mode, focusDriver, realSeries],
   );
 
-  const yMax = useMemo(() => {
-    let max = 0;
-    for (const driver of visibleDrivers) {
-      for (const p of realSeries[driver] ?? []) if (inRange(p.lap)) max = Math.max(max, p.gap);
-    }
-    if (mode === "focus" && alternateSeries) {
-      for (const p of alternateSeries) if (inRange(p.lap)) max = Math.max(max, p.gap, p.paceHigh);
-    }
-    max = Math.max(max, MIN_Y_EXTENT_S);
-    const step = max > 60 ? 20 : max > 20 ? 10 : max > 8 ? 2 : 1;
-    return Math.max(step, Math.ceil(max / step) * step);
-  }, [visibleDrivers, realSeries, mode, alternateSeries, firstLap, lastLap]);
+  // Comparison mode plots the DELTA between timelines, not gap-to-leader.
+  // Gap-to-leader carries no information when the subject is the leader: in
+  // the demo case the driver led the whole displayed window, so both traces
+  // sat flat on the axis boundary and the y-range was set by his real
+  // pit-stop dip — leaving the actual comparison in a sliver of the plot.
+  // That was the third instance of the y-scale swallowing the signal.
+  //
+  // A consequence worth naming: once the variable is `alternate - real`, the
+  // real timeline *is* the zero line. So focus mode draws one oxide trace
+  // against a zero rule rather than two traces, which is what lets a
+  // sub-second difference actually read.
+  const isDelta = mode === "focus";
 
-  const y = (gap: number) => (gap / yMax) * innerHeight;
-
-  const path = (points: GapPoint[]) => {
-    const clipped = points.filter((p) => inRange(p.lap));
-    return clipped.length
-      ? clipped.map((p, i) => `${i === 0 ? "M" : "L"}${x(p.lap).toFixed(2)},${y(p.gap).toFixed(2)}`).join(" ")
-      : "";
-  };
+  const realByLapForFocus = useMemo(() => {
+    const map = new Map<number, number>();
+    for (const p of realSeries[focusDriver ?? ""] ?? []) map.set(p.lap, p.gap);
+    return map;
+  }, [realSeries, focusDriver]);
 
   // The alternate timeline is drawn from the last *shared* lap onward. Before
   // the fork it is reality copied verbatim (spec 9.1 step 4), so drawing all
-  // of it is redundant and actively misleading — the oxide line sits exactly
-  // on the ink one and "real" appears missing from its own chart. But starting
-  // at the divergence lap itself would leave the stroke floating whenever the
-  // two values differ there (they coincide in the current demo only because
-  // VER leads in both timelines — luck, not structure). Anchoring one lap
-  // earlier uses a lap that genuinely belongs to BOTH timelines.
+  // of it is redundant and actively misleading. But starting at the divergence
+  // lap itself would leave the stroke floating whenever the two values differ
+  // there (they coincide in the demo only because VER leads in both timelines
+  // — luck, not structure). Anchoring one lap earlier uses a lap that
+  // genuinely belongs to BOTH timelines.
   const branchAnchorLap = divergenceLap != null ? divergenceLap - 1 : null;
   const alternateInRange = useMemo(
     () =>
@@ -134,12 +152,77 @@ export default function GapChart({
     [alternateSeries, firstLap, lastLap, branchAnchorLap],
   );
 
+  /**
+   * Gap-to-leader has a hard floor at zero: a car cannot be ahead of the
+   * leader. `paceLow` is derived by subtracting accumulated held-up time from
+   * the gap, which can push it below that floor — and it did, rendering the
+   * band above the zero line into physically impossible territory. Clamp at
+   * the variable's valid bound before the value is used for anything.
+   */
+  const clampGap = (gap: number) => Math.max(0, gap);
+
+  /** Delta series: alternate minus real, with band bounds clamped at source. */
+  const deltaInRange = useMemo(
+    () =>
+      alternateInRange.map((p) => {
+        const real = realByLapForFocus.get(p.lap) ?? 0;
+        return {
+          lap: p.lap,
+          gap: clampGap(p.gap) - real,
+          low: clampGap(p.paceLow) - real,
+          high: clampGap(p.paceHigh) - real,
+          clampedFraction: p.clampedFraction,
+        };
+      }),
+    [alternateInRange, realByLapForFocus],
+  );
+
+  /** [min, max] of the y variable. Field mode floors at 0; delta centres on it. */
+  const [yLo, yHi] = useMemo<[number, number]>(() => {
+    if (isDelta) {
+      // Robust to the pit-lane transient (see ROBUST_MAD_MULTIPLE). Values
+      // outside the resulting range are still drawn, clipped, with an
+      // overflow marker carrying the real number — nothing is hidden.
+      const values = deltaInRange.flatMap((p) => [p.gap, p.low, p.high]);
+      const med = median(values);
+      const mad = median(values.map((v) => Math.abs(v - med)));
+      // MIN_Y_EXTENT_S still applies as a floor on the total span, so a small
+      // delta can't be auto-scaled into a chasm; it also covers MAD = 0, which
+      // happens when most laps share one value.
+      const spread = Math.max(mad * ROBUST_MAD_MULTIPLE, MIN_Y_EXTENT_S / 2);
+      // Zero must stay on the axis: it is the real timeline.
+      const rawLo = Math.min(0, med - spread);
+      const rawHi = Math.max(0, med + spread);
+      const step = rawHi - rawLo > 40 ? 10 : rawHi - rawLo > 16 ? 5 : rawHi - rawLo > 8 ? 2 : 1;
+      return [Math.floor(rawLo / step) * step, Math.ceil(rawHi / step) * step];
+    }
+    let max = 0;
+    for (const driver of visibleDrivers) {
+      for (const p of realSeries[driver] ?? []) if (inRange(p.lap)) max = Math.max(max, p.gap);
+    }
+    max = Math.max(max, MIN_Y_EXTENT_S);
+    const step = max > 60 ? 20 : max > 20 ? 10 : max > 8 ? 2 : 1;
+    return [0, Math.max(step, Math.ceil(max / step) * step)];
+  }, [isDelta, deltaInRange, seedSeries, visibleDrivers, realSeries, firstLap, lastLap, realByLapForFocus]);
+
+  /** Positive is downward in both modes: a bigger gap, or time lost, reads lower. */
+  const y = (v: number) => ((v - yLo) / (yHi - yLo)) * innerHeight;
+
+  const path = (points: GapPoint[]) => {
+    const clipped = points.filter((p) => inRange(p.lap));
+    return clipped.length
+      ? clipped.map((p, i) => `${i === 0 ? "M" : "L"}${x(p.lap).toFixed(2)},${y(p.gap).toFixed(2)}`).join(" ")
+      : "";
+  };
+
   const yTicks = useMemo(() => {
-    const step = yMax > 60 ? 20 : yMax > 20 ? 10 : yMax > 8 ? 2 : 1;
+    const span = yHi - yLo;
+    const step = span > 120 ? 20 : span > 40 ? 10 : span > 16 ? 5 : span > 8 ? 2 : 1;
     const ticks: number[] = [];
-    for (let v = 0; v <= yMax; v += step) ticks.push(v);
-    return ticks;
-  }, [yMax]);
+    for (let v = Math.ceil(yLo / step) * step; v <= yHi + 1e-9; v += step) ticks.push(v);
+    if (isDelta && !ticks.some((t) => Math.abs(t) < 1e-9)) ticks.push(0);
+    return ticks.sort((a, b) => a - b);
+  }, [yLo, yHi, isDelta]);
 
   const xTicks = useMemo(() => {
     const step = lapSpan > 50 ? 10 : lapSpan > 20 ? 5 : 2;
@@ -165,19 +248,46 @@ export default function GapChart({
     return map;
   }, [alternateSeries]);
 
+  /**
+   * Laps whose delta falls outside the robust range. The trace is clipped
+   * rather than allowed to set the scale, so these carry the actual number
+   * back onto the chart — a clipped line with no annotation would be the
+   * chart lying about its own range.
+   */
+  const overflows = useMemo(() => {
+    if (!isDelta) return [] as { lap: number; value: number; above: boolean }[];
+    return deltaInRange
+      .filter((p) => p.gap < yLo || p.gap > yHi)
+      .map((p) => ({ lap: p.lap, value: p.gap, above: p.gap < yLo }));
+  }, [isDelta, deltaInRange, yLo, yHi]);
+
+  /** The single most extreme overflow, labelled with its value. */
+  const peakOverflow = useMemo(
+    () =>
+      overflows.reduce<{ lap: number; value: number; above: boolean } | null>(
+        (best, p) => (best == null || Math.abs(p.value) > Math.abs(best.value) ? p : best),
+        null,
+      ),
+    [overflows],
+  );
+
+  const clipId = `plot-clip-${focusDriver ?? "field"}`;
+
   return (
     <figure className="m-0">
-      <div className="flex items-baseline justify-between px-1 pb-1">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4 px-1 pb-1">
         <figcaption className="label-caps">
-          Gap to leader — {mode === "focus" ? `${focusDriver}: real vs alternate` : "race as it happened"}
+          {isDelta
+            ? `${focusDriver} — time lost or gained vs the real race`
+            : "Gap to leader — race as it happened"}
         </figcaption>
-        {mode === "focus" && (
-          <div className="flex items-center gap-4 font-mono text-micro">
+        {isDelta && (
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-micro">
             <span className="flex items-center gap-1.5">
               <svg width="18" height="8" aria-hidden="true">
-                <line x1="0" y1="4" x2="18" y2="4" stroke="#1A1917" strokeWidth="1.75" />
+                <line x1="0" y1="4" x2="18" y2="4" stroke="#1A1917" strokeWidth="1.5" />
               </svg>
-              real
+              real <span className="text-ink/45">= zero</span>
             </span>
             <span className="flex items-center gap-1.5">
               <svg width="18" height="8" aria-hidden="true">
@@ -185,6 +295,7 @@ export default function GapChart({
               </svg>
               alternate <span className="text-ink/45">median of {seedSeries?.length ?? 0} runs</span>
             </span>
+            <span className="text-ink/45">below = time lost</span>
           </div>
         )}
       </div>
@@ -194,14 +305,19 @@ export default function GapChart({
         height={height}
         role="img"
         aria-label={
-          mode === "focus"
-            ? `Gap to leader for ${focusDriver}, real timeline against the alternate timeline`
+          isDelta
+            ? `Time lost or gained by ${focusDriver} in the alternate timeline against the real race, by lap. Zero is the real race.`
             : "Gap to leader for every driver, as the race happened"
         }
         onMouseMove={onMove}
         onMouseLeave={() => onHoverLap?.(null)}
         className="block"
       >
+        <defs>
+          <clipPath id={clipId}>
+            <rect x={0} y={0} width={plotWidth} height={innerHeight} />
+          </clipPath>
+        </defs>
         <g transform={`translate(${AXIS_MARGIN.left},${V_MARGIN.top})`}>
           {safetyCarPeriods.map((p) => (
             <rect
@@ -235,13 +351,19 @@ export default function GapChart({
             </>
           )}
 
-          {/* Pace-only band. Means ONE thing: uncertainty about pace. */}
-          {mode === "focus" && alternateInRange.length > 0 && (
+          {/* Everything data-bearing is clipped to the plot, so a value beyond
+              the robust range can't scribble over the axes. Its real number is
+              restored by the overflow markers below. */}
+          <g clipPath={`url(#${clipId})`}>
+          {/* Pace-only band. Means ONE thing: uncertainty about pace. Bounds
+              are already clamped at the gap variable's floor before being
+              differenced, so the band cannot reach into impossible territory. */}
+          {isDelta && deltaInRange.length > 0 && (
             <path
-              d={`${path(alternateInRange.map((p) => ({ lap: p.lap, gap: p.paceHigh })))} ${alternateInRange
+              d={`${path(deltaInRange.map((p) => ({ lap: p.lap, gap: p.high })))} ${deltaInRange
                 .slice()
                 .reverse()
-                .map((p) => `L${x(p.lap).toFixed(2)},${y(p.paceLow).toFixed(2)}`)
+                .map((p) => `L${x(p.lap).toFixed(2)},${y(p.low).toFixed(2)}`)
                 .join(" ")} Z`}
               fill="#A33A2E"
               fillOpacity={0.1}
@@ -250,12 +372,18 @@ export default function GapChart({
           )}
 
           {/* Real seed traces (spec 6.10): the spread, so the median isn't
-              read as the single answer. */}
-          {mode === "focus" &&
+              read as the single answer. Converted to deltas against the real
+              timeline, same clamp applied. */}
+          {isDelta &&
             seedSeries?.map((trace) => (
               <path
                 key={`seed-${trace.seed}`}
-                d={path(trace.points)}
+                d={path(
+                  trace.points.map((p) => ({
+                    lap: p.lap,
+                    gap: clampGap(p.gap) - (realByLapForFocus.get(p.lap) ?? 0),
+                  })),
+                )}
                 fill="none"
                 stroke="#A33A2E"
                 strokeWidth={0.75}
@@ -263,35 +391,53 @@ export default function GapChart({
               />
             ))}
 
-          {visibleDrivers.map((driver) => {
-            const isFocus = mode === "focus";
-            const isHighlighted = highlighted === driver;
-            const dimmed = !isFocus && highlighted != null && !isHighlighted;
-            return (
-              <path
-                key={driver}
-                d={path(realSeries[driver] ?? [])}
-                fill="none"
-                stroke={isFocus ? "#1A1917" : teamLineColor(teamByDriver[driver] ?? "")}
-                strokeWidth={isFocus ? 1.75 : isHighlighted ? 2 : 1}
-                strokeDasharray={isFocus ? undefined : teammateDash(teammateIndex[driver] ?? 0)}
-                strokeOpacity={isFocus ? 1 : dimmed ? 0.18 : isHighlighted ? 1 : 0.5}
-              />
-            );
-          })}
+          {/* Field mode draws every driver's gap-to-leader. Focus mode draws
+              none of them: with the variable as `alternate - real`, the real
+              timeline is exactly the zero rule below, so a separate ink trace
+              would be a flat line on top of it. */}
+          {!isDelta &&
+            visibleDrivers.map((driver) => {
+              const isHighlighted = highlighted === driver;
+              const dimmed = highlighted != null && !isHighlighted;
+              return (
+                <path
+                  key={driver}
+                  d={path(realSeries[driver] ?? [])}
+                  fill="none"
+                  stroke={teamLineColor(teamByDriver[driver] ?? "")}
+                  strokeWidth={isHighlighted ? 2 : 1}
+                  strokeDasharray={teammateDash(teammateIndex[driver] ?? 0)}
+                  strokeOpacity={dimmed ? 0.18 : isHighlighted ? 1 : 0.5}
+                />
+              );
+            })}
 
-          {mode === "focus" && alternateInRange.length > 0 && (
-            <path d={path(alternateInRange)} fill="none" stroke="#A33A2E" strokeWidth={1.75} />
+          {/* The zero rule: this IS the real timeline in delta mode. Drawn in
+              ink at full weight so it reads as a reference line with meaning,
+              not as a gridline. */}
+          {isDelta && (
+            <>
+              <line x1={0} x2={plotWidth} y1={y(0)} y2={y(0)} stroke="#1A1917" strokeWidth={1.5} />
+              <text x={2} y={y(0) - 4} className="font-mono" fontSize={9} fill="#1A1917" opacity={0.55}>
+                real
+              </text>
+            </>
+          )}
+
+          {isDelta && deltaInRange.length > 0 && (
+            <path d={path(deltaInRange)} fill="none" stroke="#A33A2E" strokeWidth={1.75} />
           )}
 
           {/* Branch node: without it the two strokes read as a break in one
               line rather than one history splitting into two. Paper-filled
               with an ink stroke so it reads as a junction on the shared line,
               not a data point owned by either timeline. */}
-          {mode === "focus" && branchAnchorLap != null && inRange(branchAnchorLap) && (
+          {isDelta && branchAnchorLap != null && inRange(branchAnchorLap) && (
             <circle
               cx={x(branchAnchorLap)}
-              cy={y((realSeries[focusDriver ?? ""] ?? []).find((p) => p.lap === branchAnchorLap)?.gap ?? 0)}
+              /* In delta terms the fork is by definition at zero: before it,
+                 the two timelines are the same history. */
+              cy={y(0)}
               r={3}
               fill="#F4F1EA"
               stroke="#1A1917"
@@ -300,8 +446,8 @@ export default function GapChart({
           )}
 
           {/* Held-up ticks: traffic as a discrete EVENT, not diffused band. */}
-          {mode === "focus" &&
-            alternateInRange
+          {isDelta &&
+            deltaInRange
               .filter((p) => p.clampedFraction > 0.5)
               .map((p) => (
                 <line
@@ -314,14 +460,55 @@ export default function GapChart({
                   strokeWidth={1.5}
                 />
               ))}
+          </g>
+
+          {/* Overflow markers, drawn OUTSIDE the clip so they always show. A
+              small oxide wedge at the edge for each lap beyond the range, and
+              the peak value spelled out — the range is robust to the pit
+              transient, but the transient is real and must stay readable. */}
+          {overflows.map((p) => {
+            const edge = p.above ? 0 : innerHeight;
+            const dir = p.above ? 1 : -1;
+            return (
+              <path
+                key={`ovf-${p.lap}`}
+                d={`M${(x(p.lap) - 3.5).toFixed(2)},${edge + dir * 6} L${x(p.lap).toFixed(2)},${edge} L${(x(p.lap) + 3.5).toFixed(2)},${edge + dir * 6} Z`}
+                fill="#A33A2E"
+                fillOpacity={0.85}
+              />
+            );
+          })}
+          {peakOverflow && (
+            <text
+              x={Math.min(x(peakOverflow.lap) + 6, plotWidth - 4)}
+              y={peakOverflow.above ? 14 : innerHeight - 6}
+              textAnchor={x(peakOverflow.lap) > plotWidth - 60 ? "end" : "start"}
+              className="font-mono"
+              fontSize={9.5}
+              fill="#A33A2E"
+            >
+              {peakOverflow.value > 0 ? "+" : ""}
+              {peakOverflow.value.toFixed(1)}s at L{peakOverflow.lap} (off scale)
+            </text>
+          )}
 
           {hoverLap != null && inRange(hoverLap) && (
             <line x1={x(hoverLap)} x2={x(hoverLap)} y1={0} y2={innerHeight} stroke="#1A1917" strokeWidth={0.5} />
           )}
 
           {yTicks.map((t) => (
-            <text key={`yl-${t}`} x={-8} y={y(t) + 3} textAnchor="end" className="font-mono" fontSize={10} fill="#1A1917">
-              {t}
+            <text
+              key={`yl-${t}`}
+              x={-8}
+              y={y(t) + 3}
+              textAnchor="end"
+              className="font-mono"
+              fontSize={10}
+              fill="#1A1917"
+              opacity={isDelta && t === 0 ? 1 : 0.75}
+            >
+              {/* Signed in delta mode: the sign is the whole point. */}
+              {isDelta && t > 0 ? `+${t}` : t}
             </text>
           ))}
           {xTicks.map((t) => (
@@ -348,29 +535,37 @@ export default function GapChart({
       <div className="flex min-h-[2.25rem] flex-wrap items-baseline gap-x-5 gap-y-1 px-1 pt-1.5 font-mono text-micro">
         {hoverLap == null ? (
           <span className="text-ink/40">Hover the chart for a lap readout</span>
-        ) : mode === "focus" ? (
+        ) : isDelta ? (
           (() => {
             const alt = alternateByLap.get(hoverLap);
-            const real = (realSeries[focusDriver ?? ""] ?? []).find((p) => p.lap === hoverLap);
+            const realGap = realByLapForFocus.get(hoverLap);
             const postFork = divergenceLap == null || hoverLap >= divergenceLap;
+            // The delta is the plotted variable, so it leads. Underlying
+            // gap-to-leader values follow as context, clamped the same way
+            // the plotted values are so the readout can't disagree with the
+            // chart.
+            const delta =
+              alt != null && realGap != null ? clampGap(alt.gap) - realGap : null;
             return (
               <>
                 <span className="text-ink/60">LAP {hoverLap}</span>
-                <span>real {real ? `${real.gap.toFixed(1)}s` : "—"}</span>
-                {postFork ? (
+                {postFork && delta != null ? (
                   <>
-                    <span className="text-annotation">alt {alt ? `${alt.gap.toFixed(1)}s` : "—"}</span>
-                    {alt && real && (
-                      <span className="text-ink/60">
-                        Δ {(alt.gap - real.gap >= 0 ? "+" : "") + (alt.gap - real.gap).toFixed(1)}s
+                    <span className="text-annotation">
+                      {delta >= 0 ? "+" : ""}
+                      {delta.toFixed(2)}s {delta >= 0 ? "lost" : "gained"}
+                    </span>
+                    <span className="text-ink/50">
+                      gap to leader: real {realGap!.toFixed(1)}s · alt {clampGap(alt!.gap).toFixed(1)}s
+                    </span>
+                    {alt!.clampedFraction > 0.5 && (
+                      <span className="text-annotation">
+                        held up ({Math.round(alt!.clampedFraction * 100)}% of runs)
                       </span>
-                    )}
-                    {alt && alt.clampedFraction > 0.5 && (
-                      <span className="text-annotation">held up ({Math.round(alt.clampedFraction * 100)}% of runs)</span>
                     )}
                   </>
                 ) : (
-                  <span className="text-ink/40">before the fork — one history</span>
+                  <span className="text-ink/40">before the fork — one history, delta is zero</span>
                 )}
               </>
             );

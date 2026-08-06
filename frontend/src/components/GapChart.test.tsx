@@ -73,22 +73,96 @@ function firstPoint(path: SVGPathElement): { x: number; y: number } {
   return { x, y };
 }
 
+/** The main plot, excluding the small aria-hidden legend swatches. */
+function plot(container: HTMLElement): SVGSVGElement {
+  const svg = container.querySelector('svg[role="img"]');
+  if (!svg) throw new Error("plot svg not found");
+  return svg as SVGSVGElement;
+}
+
+/**
+ * Numeric y-axis tick labels only. Scoped by `text-anchor="end"`, which is
+ * what distinguishes the y column from the x-axis lap labels (`middle`) —
+ * without that, lap numbers get counted as y values.
+ */
+function yTickValues(container: HTMLElement): number[] {
+  return [...plot(container).querySelectorAll('text[text-anchor="end"]')]
+    .map((t) => Number((t.textContent ?? "").replace("+", "")))
+    .filter((n) => Number.isFinite(n));
+}
+
 describe("GapChart focus mode", () => {
   it("anchors the alternate line at the last SHARED lap so the branch can't float", () => {
     // The fork's own lap can hold different values in the two timelines; if
     // the oxide stroke started there it would begin disconnected from the
     // history it branches from. Anchoring at divergenceLap - 1 -- a lap that
     // genuinely belongs to both timelines -- guarantees continuity.
+    //
+    // Since 6.1 the plotted variable is `alternate - real`, so the real
+    // timeline IS the zero rule and the anchor must sit exactly on it. That
+    // makes the property easier to state, not weaker: before the fork the
+    // delta is zero by definition.
     const { container } = renderFocus();
     const start = firstPoint(alternatePath(container));
-    const realLine = [...container.querySelectorAll('path[stroke="#1A1917"]')] as SVGPathElement[];
-    const realStart = realLine[0].getAttribute("d") ?? "";
+    // Scoped to the plot: the legend carries an identical swatch line.
+    const zeroRule = plot(container).querySelector('line[stroke="#1A1917"][stroke-width="1.5"]');
+    expect(zeroRule).not.toBeNull();
 
-    // The anchor's y must equal the real line's y at that lap (both 0 here),
-    // and its x must be strictly left of the divergence lap's x.
-    const realYAtZeroGap = Number(realStart.split(/[ ,]/)[1]);
-    expect(start.y).toBeCloseTo(realYAtZeroGap, 1);
+    const zeroY = Number(zeroRule!.getAttribute("y1"));
+    expect(start.y).toBeCloseTo(zeroY, 1);
     expect(start.x).toBeGreaterThan(0);
+  });
+
+  it("scales y to the delta, not to gap-to-leader pit-stop swings", () => {
+    // The fault this replaced: the subject led the whole window, so both
+    // traces sat on the axis boundary and the range was owned by his real
+    // ~24s pit-stop dip, leaving a sub-second comparison invisible. With the
+    // delta as the variable, a large real gap must not influence the range.
+    const realWithBigPitDip = {
+      ...realSeries,
+      AAA: realSeries.AAA.map((p) => (p.lap === 7 ? { ...p, gap: 24 } : p)),
+    };
+    // Alternate tracks that dip, so the DELTA stays sub-second throughout.
+    const alternateTracking = alternateSeries.map((p) => {
+      const real = realWithBigPitDip.AAA.find((r) => r.lap === p.lap)!.gap;
+      const delta = p.lap < 5 ? 0 : 0.4;
+      return { ...p, gap: real + delta, paceLow: real + delta - 0.1, paceHigh: real + delta + 0.1 };
+    });
+
+    const { container } = renderFocus({
+      realSeries: realWithBigPitDip,
+      alternateSeries: alternateTracking,
+    });
+    const ticks = yTickValues(container);
+    // MIN_Y_EXTENT_S (5) floors the total span, so ticks reach a few seconds --
+    // but nothing near the 24s dip.
+    expect(Math.max(...ticks.map(Math.abs))).toBeLessThan(8);
+  });
+
+  it("signs the delta axis, and both directions are reachable", () => {
+    const { container } = renderFocus();
+    const ticks = yTickValues(container);
+    expect(Math.min(...ticks)).toBeLessThan(0);
+    expect(Math.max(...ticks)).toBeGreaterThan(0);
+    expect(ticks).toContain(0);
+  });
+
+  it("clamps the band at the gap variable's floor instead of going impossible", () => {
+    // paceLow is gap minus accumulated held-up time, which can push it below
+    // zero -- and did, rendering the band above the zero line, i.e. a car
+    // ahead of the leader. A synthetic case that would previously have
+    // breached it: an impossible -5s lower bound.
+    const breaching = alternateSeries.map((p) => ({
+      ...p,
+      gap: p.lap < 5 ? 0 : 1,
+      paceHigh: p.lap < 5 ? 0 : 1.2,
+      paceLow: p.lap < 5 ? 0 : -5, // impossible: ahead of the leader
+    }));
+    const { container } = renderFocus({ alternateSeries: breaching });
+    const ticks = yTickValues(container);
+    // Unclamped, the axis would have to open up to about +/-6 to fit -5.
+    // Clamped at the floor, the range stays governed by the real values.
+    expect(Math.max(...ticks.map(Math.abs))).toBeLessThan(5);
   });
 
   it("renders a branch node at the fork so it reads as a split, not a break", () => {
