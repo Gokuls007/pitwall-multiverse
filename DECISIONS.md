@@ -2991,3 +2991,166 @@ guard against. Merged to `master` (06e6020), both spent branches deleted, 161 ba
 **Not pushed.** No git remote is configured and `gh` is not installed, so nothing has left
 this machine. Creating the remote is a publishing decision (account, name, visibility) and
 is deliberately left to the human running the project rather than done unilaterally.
+
+### 2026-08-05 — Phase 6.2: precompute expansion, with three measured corrections
+
+Built `scripts/build_fixtures.py`: every catalogued race, every driver with a
+real pit stop, every candidate pit lap the engine accepts.
+
+**Measured before committing to the approach, as the spec required — and the
+estimate needed adjusting three times.**
+
+| | Measured |
+|---|---|
+| Candidates across catalogue | 8,085 |
+| Simulations (60 seeds each) | 485,100 |
+| Per-simulation cost | 5.3ms |
+| Single-threaded projection | ~43 min |
+| **Actual, 10 workers** | **9.2 min** (551s) |
+| Files | 103 (98 driver + 5 per-race base) |
+| Total size | 21.2MB |
+| Per-driver file | min 18KB, **median 201KB**, max 395KB |
+| Per-race base file | ~22KB |
+
+Per-race timings: Hungarian 104s, Mexican 118s, Australian 64s, Monaco 126s,
+Spanish 129s.
+
+**Correction 1 — parallelism, and then a cap.** 43 minutes single-threaded is
+above the spec's "well under half an hour". Candidates are independent and the
+engine is a pure function of `(snapshot, params, decision, seed)`, so
+distributing them changes no output and determinism holds exactly. But at 31
+workers on a 32-core machine the pool died with `BrokenProcessPool` partway
+through the catalogue — resource pressure, not a bad candidate, confirmed by
+rebuilding the same race cleanly at 8 workers. Default is now capped at 10:
+~40s per race slower than the theoretical best, and reliable, which matters
+because fixtures must be regenerated whenever a parameter moves.
+
+**Correction 2 — the stored-fields list was wrong, as the spec anticipated.**
+First build produced a 660KB median and 1112KB max, i.e. 2-3x the "low hundreds
+of kilobytes" budget. Rather than compress, measured the per-field contribution:
+`seedTraces` was **71.3%** of the payload (740KB of a 1067KB file). Dropped
+them. Individual seed traces were added in v1 because a lone median line reads
+as *the* answer — but that was before the band became delta quantiles. The
+p10-p90 band (2 numbers per lap) plus the per-driver classification
+distribution now carry the same spread that 12 traces x 2 numbers per lap did,
+and both still satisfy spec 6.10's requirement to report a distribution rather
+than a point. Median file size fell 660KB -> 201KB. `GapChart` keeps its
+optional `seedSeries` prop so a single selected candidate could be re-simulated
+for traces if that proves worth it.
+
+**Correction 3 — a missing file type, found by building the production
+bundle.** Per-driver files store the delta against reality, so they don't carry
+gap-to-leader for the field; field mode had nowhere to get it. Added a per-race
+`__base.json` with the field-wide real series, drivers, stints and SC periods
+(~22KB). Selecting a race fetches that once; selecting a driver fetches exactly
+one candidate file. Worth noting how this surfaced: `npm run build` emitted zero
+fixture assets and a 256K `dist`, because `raceFixtures.ts` isn't yet imported
+from `main.tsx` and Rollup tree-shook it — correct behaviour, but it made the
+field-mode gap obvious.
+
+**Also resolved from 6.1:** the band is now quantiles of the delta itself
+rather than of `gap - cumulative_clamp_penalty`. That old quantity ratcheted
+unboundedly negative (-14.66s by lap 65, with even the upper bound negative), so
+6.1's required clamp collapsed the band to nothing in later laps. Fixing it in
+the fixture rather than the component means the band reports quantiles of the
+thing actually plotted.
+
+**A test of mine was wrong, not the data.** `test_every_driver_file_has_the_required_shape`
+first asserted exactly one reality-reproducing candidate per real pit stop. It
+failed on 2019 Australian RIC, whose real pit laps are [1, 29]: he pitted lap 1
+for a new front wing after the turn-1 contact, then retired with damage on lap
+29 — so that second in-lap *is* the retirement, with no following stint to shift
+against, and `_apply_change_pit_lap` correctly refuses. Assertion corrected to
+at-least-one and at-most-one-per-stop.
+
+**Fingerprint coverage extended from one file to all 103.** 98 driver files is
+98 chances for a stale number to reach the UI. `test_fixture.py` now verifies
+every file against a fresh per-race fit, plus a 600KB size ceiling so a
+stored-fields regression fails loudly rather than producing a UI that stops
+loading.
+
+**Monaco is present and labelled, not omitted.** Every Monaco file carries an
+`excludedFromGate` note stating the reason (30% tyre-cell fallback fraction,
+roughly double the next-worst race; highest unclamped signed error) so the UI
+can show a visible caveat. A stated weakness is more useful than a missing
+option.
+
+**Correction 4, found in the browser after all of the above passed — the delta
+was on the wrong variable entirely.** Everything above was written, and 13
+fixture tests plus 168 backend tests passed, while the chart was reporting
+**+0.00s lost, p10–p90 +0.00 to +0.00s** for moving Verstappen's Hungary stop
+from lap 67 to lap 40. Identically zero, all 60 seeds, on 26 of the 31
+simulated laps.
+
+The cause: the delta was `alternate gap-to-leader − real gap-to-leader`.
+Gap-to-leader is floored at zero for whoever is leading, and VER led laps 1–66
+in both timelines, so the difference of two zeroes is zero. The chart said "this
+decision changed nothing" about a 27-lap change. This is the **fourth** time the
+y-variable has needed fixing, and the fourth time only a browser found it — 6.1
+fixed the *scale* of this variable twice without ever questioning the variable.
+
+The stored quantity is now `alternate cumulative_time_s − real cumulative race
+time`, which has no floor and is defined whether or not the driver leads. The
+same case now reads +10.9s at the fork (the pit stop), climbing to **−68.5s by
+lap 70** — and VER takes P1 in 100% of runs, on a soft stint 27 laps beyond any
+tyre age he reached on that compound, which the ochre caution states directly
+above the classification table. That is the intended shape of this product: a
+large claim with its exposure named beside it.
+
+Reality here is the *ingested* lap times, not the reality-reproducing
+simulation. So the delta contains the model's own error as well as the
+decision's effect — which is why the reality-reproducing candidate is kept and
+shown rather than hidden. On Hungary/VER it reads **+6.5s at lap 67, settling to
+−7.4s by lap 70**: the model's total pit cost is ~5s cheaper than the real stop,
+and the +6.5/−5.4 oscillation across laps 67–68 is in-lap versus out-lap
+attribution. Worth stating plainly, because it bounds the counterfactual: a 68s
+swing is an order of magnitude outside the model's own 7s error over the same
+window, whereas a sub-second claim would not be.
+
+**What the earlier tests could not have caught, and the one that now can.**
+Fingerprints, file shapes, sizes, monotonicity of extrapolation — all of it
+passed on degenerate data, because none of it looked at whether the stored
+numbers *said anything*. `test_a_moved_pit_stop_produces_a_non_degenerate_delta`
+now asserts, across every candidate that moves a stop by 10+ laps (1,000+ of
+them), that fewer than half the post-fork laps have an identically-zero delta
+and band, and that the post-fork delta spans more than 1s.
+
+Its first version was wrong in the usual direction: it asserted the *final*
+delta exceeded 0.5s, and failed on 2019 Australian GRO 15→25, which finishes
+0.26s apart. That is correct data — both timelines pay the same pit loss before
+he retires on lap 29, leaving only the tyre-pace integral — so the endpoints can
+legitimately reconverge. The assertion moved to the excursion between them,
+which is the property that cannot vanish.
+
+**Wiring, and one measurement about dev mode.** `App.tsx` is now driven entirely
+by the loader: race and driver selectors, plus a "stop to move" selector when a
+driver has more than one real stop (VER at Hungary has two, laps 25 and 67, and
+collapsing them into one slider would put non-adjacent laps side by side and
+make the extrapolation curve meaningless). Phase 6.1's "committed vs previewed"
+split is retired — every candidate's ensemble is already in the open file, so
+the chart follows the slider and there is nothing left to label as uncommitted.
+
+Verified in the browser, and measured: a fresh production build emits **103
+separate JSON assets and a 183KB (58KB gzip) JS bundle** with no fixture data
+inlined, and selecting Hungary then VER issues exactly two data requests. In
+*dev* mode Vite additionally issues 103 tiny `?import&url` requests to build the
+URL map — each response is a single line (`export default "/src/…json"`), not
+data, and they do not exist in the production build. Recorded rather than
+smoothed over, since "103 requests" looks alarming in a devtools panel.
+
+`App.test.tsx` now asserts this through the rendered UI rather than through the
+loader module, serving the real fixture JSON off disk so the tests fail if the
+generator's output stops matching what the UI reads. That distinction is not
+pedantic: the loader's own unit test passed while nothing reachable from
+`main.tsx` imported it, and Rollup tree-shook the whole module out of the
+bundle.
+
+**The fixtures are committed, with the cost measured.** 21.2MB on disk
+compresses to **5.1MB**, which is what each regeneration adds to git history.
+Parameters will move again in Phases 10 and 11, so budget roughly 5MB per
+regeneration; at that rate committing them stays cheaper than the alternative,
+which is a repository that can't run its own frontend tests or serve its own
+demo without a 9-minute generation step and a warm FastF1 cache. If the history
+does become a problem the exit is clean — the generator is committed, the output
+is reproducible from it, and the fixture tests already skip when the directory
+is absent.

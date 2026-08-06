@@ -30,3 +30,6 @@ Thumbs.db
 
 # Generated plots (kept out of git except committed report assets)
 backend/pitwall/validation/_plots/
+
+# TypeScript incremental build cache — machine-local, was tracked by mistake.
+frontend/tsconfig.tsbuildinfo

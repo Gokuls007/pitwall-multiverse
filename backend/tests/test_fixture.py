@@ -27,7 +27,9 @@ import pytest
 from pitwall.simulation.lap_time import AR1_PHI
 from pitwall.simulation.position import MIN_FOLLOWING_GAP_S
 
-FIXTURE_PATH = Path(__file__).resolve().parents[2] / "frontend" / "src" / "fixtures" / "race.json"
+FIXTURES_DIR = Path(__file__).resolve().parents[2] / "frontend" / "src" / "fixtures"
+FIXTURE_PATH = FIXTURES_DIR / "race.json"
+RACES_DIR = FIXTURES_DIR / "races"
 
 
 @pytest.fixture(scope="module")
@@ -35,6 +37,158 @@ def fixture() -> dict:
     if not FIXTURE_PATH.exists():
         pytest.skip(f"{FIXTURE_PATH} not generated; run scripts/export_fixture.py")
     return json.loads(FIXTURE_PATH.read_text(encoding="utf-8"))
+
+
+def _race_files() -> list[Path]:
+    """Every generated file: per-race base files and per-driver candidate files."""
+    return sorted(RACES_DIR.glob("*.json")) if RACES_DIR.exists() else []
+
+
+def _driver_files() -> list[Path]:
+    """Per-driver candidate files only, excluding the shared per-race base."""
+    return [p for p in _race_files() if not p.name.endswith("__base.json")]
+
+
+def _base_files() -> list[Path]:
+    return [p for p in _race_files() if p.name.endswith("__base.json")]
+
+
+@pytest.fixture(scope="module")
+def live_fingerprints() -> dict[str, dict]:
+    """One fresh fit per race, reused across every driver file for that race.
+
+    Phase 6.2 produces 98 per-driver files. Fitting once per file would refit
+    each race twenty times over.
+    """
+    from pitwall.ingestion.catalogue import get_entry
+    from pitwall.ingestion.loader import load_race
+    from pitwall.parameters.fit_all import fit_catalogue_with_pooled_dirty_air
+
+    race_keys = sorted({path.name.split("__")[0] for path in _race_files()})
+    result: dict[str, dict] = {}
+    for race_key in race_keys:
+        entry = get_entry(race_key)
+        snapshot, _ = load_race(entry.year, entry.fastf1_event_identifier)
+        params = fit_catalogue_with_pooled_dirty_air([snapshot])[race_key]
+        result[race_key] = {
+            "minFollowingGapS": MIN_FOLLOWING_GAP_S,
+            "ar1Phi": AR1_PHI,
+            "pitLaneLossS": round(params.pit_lane_loss_s, 4),
+            "overtakeDifficulty": round(params.overtake_difficulty, 6),
+            "dirtyAirMaxPenaltyS": round(params.dirty_air.max_penalty_s, 6),
+            "dirtyAirDecayScaleS": round(params.dirty_air.decay_scale_s, 6),
+        }
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Phase 6.2: the per-driver expansion. The fingerprint guard now covers EVERY
+# generated file, not one — 98 files is 98 chances for a stale number to reach
+# the UI, and the whole point of the fingerprint is that staleness fails a test
+# instead of shipping.
+# ---------------------------------------------------------------------------
+
+
+def test_every_race_file_fingerprint_matches_live_code(live_fingerprints):
+    files = _race_files()
+    if not files:
+        pytest.skip("no per-driver fixtures; run scripts/build_fixtures.py")
+
+    stale: list[str] = []
+    for path in files:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        expected = live_fingerprints[payload["meta"]["raceKey"]]
+        if payload["meta"]["paramFingerprint"] != expected:
+            stale.append(path.name)
+    assert not stale, (
+        f"{len(stale)} fixture file(s) were generated under different parameters and are "
+        f"stale: {stale[:5]}{'...' if len(stale) > 5 else ''}. "
+        "Re-run scripts/build_fixtures.py."
+    )
+
+
+def test_every_driver_file_has_the_required_shape():
+    files = _driver_files()
+    if not files:
+        pytest.skip("no per-driver fixtures; run scripts/build_fixtures.py")
+
+    for path in files:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        meta, candidates = payload["meta"], payload["candidates"]
+        assert meta["driver"] and meta["raceKey"], path.name
+        assert path.name == f"{meta['raceKey']}__{meta['driver']}.json"
+        assert meta["realPitLaps"], f"{path.name}: eligible drivers must have a real stop"
+        assert candidates, f"{path.name}: no candidates generated"
+
+        # At least one candidate reproduces reality, and never more than one per
+        # real stop. Deliberately NOT "exactly one per stop": a final stop with
+        # no following stint cannot be shifted, and the engine correctly refuses.
+        # RIC's 2019 Australian GP is the real case — he pitted on lap 1 for a
+        # new front wing and then retired with damage on lap 29, so that second
+        # in-lap IS the retirement and there is nothing after it to move
+        # relative to. An earlier version of this test asserted one-per-stop and
+        # failed on exactly that, which is the test being wrong rather than the
+        # data.
+        real_marked = [c for c in candidates if c["isReal"]]
+        assert real_marked, f"{path.name}: no candidate reproduces reality"
+        assert len(real_marked) <= len(meta["realPitLaps"]), path.name
+        assert len({c["originalLap"] for c in real_marked}) == len(real_marked), (
+            f"{path.name}: more than one real-marked candidate for the same stop"
+        )
+        for candidate in candidates:
+            assert candidate["delta"], f"{path.name}: candidate has no delta trace"
+            assert candidate["classification"], f"{path.name}: candidate has no distribution"
+
+
+def test_no_driver_file_stores_per_seed_lap_state():
+    """The storage rule that makes the payload loadable at all: summaries only.
+
+    485,100 simulations back these files. Serialising per-seed `LapState`
+    arrays would be gigabytes, and an earlier draft that stored 12 individual
+    seed traces per candidate was already 71% seed data and 2-3x the size
+    budget.
+    """
+    files = _race_files()
+    if not files:
+        pytest.skip("no per-driver fixtures; run scripts/build_fixtures.py")
+
+    banned = {"lapStates", "seedTraces", "seedSeries", "states"}
+    for path in _driver_files():
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        for candidate in payload["candidates"]:
+            present = banned & set(candidate)
+            assert not present, f"{path.name}: per-seed state stored ({present})"
+
+
+def test_race_file_sizes_stay_within_the_stated_budget():
+    """The spec's sizing rule, enforced rather than measured once.
+
+    "Per-driver files should land in the low hundreds of kilobytes... if they
+    come out much larger, the stored-fields list is wrong." A regression here
+    should fail loudly, because the failure mode is a UI that stops loading.
+    """
+    files = _race_files()
+    if not files:
+        pytest.skip("no per-driver fixtures; run scripts/build_fixtures.py")
+
+    oversized = [(p.name, p.stat().st_size // 1024) for p in files if p.stat().st_size > 600 * 1024]
+    assert not oversized, f"files above the 600KB ceiling: {oversized}"
+
+
+def test_monaco_is_present_and_labelled_rather_than_omitted():
+    """A visible caveat is more useful than a missing option."""
+    files = _race_files()
+    if not files:
+        pytest.skip("no per-driver fixtures; run scripts/build_fixtures.py")
+
+    monaco = [p for p in files if p.name.startswith("2019_monaco__")]
+    assert monaco, "Monaco must be generated, not skipped for being excluded from the gate"
+    for path in monaco:
+        note = json.loads(path.read_text(encoding="utf-8"))["meta"]["excludedFromGate"]
+        assert note and "gate" in note.lower(), f"{path.name}: missing the exclusion caveat"
+
+    other = next(p for p in files if not p.name.startswith("2019_monaco__"))
+    assert json.loads(other.read_text(encoding="utf-8"))["meta"]["excludedFromGate"] is None
 
 
 def test_fixture_simulation_constants_match_live_code(fixture):
@@ -171,3 +325,84 @@ def test_extrapolation_grows_monotonically_away_from_the_real_lap(fixture):
     for nearer, further in zip(earlier[1:], earlier, strict=False):
         # Walking back toward the real lap, exposure must not increase.
         assert nearer["beyondEvidenceLaps"] <= further["beyondEvidenceLaps"]
+
+
+def test_every_race_has_a_base_file_carrying_the_shared_field_data():
+    """Field mode needs every driver's real gap-to-leader, and the per-driver
+    candidate files deliberately don't duplicate it — 20 copies of the same
+    field-wide series per race would be waste. So each race ships one base
+    file. Selecting a race fetches that once; selecting a driver then fetches
+    exactly one candidate file.
+
+    This omission was caught by building the production bundle and finding the
+    field-mode data had nowhere to come from.
+    """
+    bases = _base_files()
+    if not bases:
+        pytest.skip("no fixtures; run scripts/build_fixtures.py")
+
+    driver_races = {p.name.split("__")[0] for p in _driver_files()}
+    base_races = {p.name.split("__")[0] for p in bases}
+    assert driver_races == base_races, "every race with driver files needs a base file"
+
+    for path in bases:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        assert payload["realSeries"], f"{path.name}: no real gap-to-leader series"
+        assert payload["drivers"], f"{path.name}: no driver list"
+        assert payload["stints"], f"{path.name}: no stints"
+        # The flag the UI needs to know which drivers are selectable.
+        assert any(d["hasCandidates"] for d in payload["drivers"]), path.name
+        # Base files are shared, so they must stay small.
+        assert path.stat().st_size < 120 * 1024, f"{path.name} is {path.stat().st_size // 1024}KB"
+
+
+def test_a_moved_pit_stop_produces_a_non_degenerate_delta():
+    """The regression guard for the bug that survived every other test here.
+
+    The delta was originally stored as the difference of two *gap-to-leader*
+    series. Gap-to-leader is floored at zero for whoever is leading, so for a
+    driver who leads in both timelines the difference is identically 0.000 —
+    and on the demo case (VER led laps 1-66 of Hungary 2019) it was exactly
+    that on 26 of the 31 simulated laps, p10 and p90 included. Every
+    fingerprint, shape, size and monotonicity assertion passed while the chart
+    reported "no difference at all" for moving a pit stop by 27 laps. Only
+    opening it in a browser found it.
+
+    So: for a candidate that moves a stop by a wide margin, the post-fork delta
+    must actually vary. Cumulative race time has no floor, which is why it is
+    now the stored variable.
+    """
+    driver_files = _driver_files()
+    if not driver_files:
+        pytest.skip("no fixtures; run scripts/build_fixtures.py")
+
+    checked = 0
+    for path in driver_files:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        for candidate in payload["candidates"]:
+            shift = abs(candidate["newLap"] - candidate["originalLap"])
+            # Post-fork laps only; the anchor row is zero by construction.
+            post_fork = [row for row in candidate["delta"] if row[0] >= candidate["divergenceLap"]]
+            if shift < 10 or len(post_fork) < 10:
+                continue
+            checked += 1
+            zero_laps = sum(1 for row in post_fork if row[1] == 0.0 and row[2] == 0.0 and row[3] == 0.0)
+            assert zero_laps < len(post_fork) / 2, (
+                f"{path.name} lap {candidate['originalLap']}->{candidate['newLap']}: "
+                f"{zero_laps} of {len(post_fork)} post-fork laps have an identically "
+                "zero delta and band. The stored variable is degenerate."
+            )
+            # A stop moved 10+ laps must produce a visible *excursion*. The
+            # first version of this asserted on the final delta instead and was
+            # wrong: 2019 Australian GRO 15->25 finishes 0.26s apart, because
+            # both timelines have paid the same pit loss before he retires on
+            # lap 29, leaving only the tyre-pace integral. The endpoints can
+            # legitimately reconverge; the excursion between them cannot vanish.
+            medians = [row[1] for row in post_fork]
+            assert max(medians) - min(medians) > 1.0, (
+                f"{path.name} lap {candidate['originalLap']}->{candidate['newLap']}: "
+                f"post-fork delta spans only {max(medians) - min(medians):.3f}s, "
+                f"which a {shift}-lap change cannot plausibly produce"
+            )
+
+    assert checked > 100, f"only {checked} wide-shift candidates checked; guard is too weak"

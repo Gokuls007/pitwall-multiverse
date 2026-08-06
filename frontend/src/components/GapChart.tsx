@@ -73,6 +73,25 @@ export type AlternatePoint = {
 };
 export type SeedTrace = { seed: number; points: GapPoint[] };
 
+/**
+ * A delta already computed against the real timeline, with its band as
+ * quantiles of the delta itself.
+ *
+ * The precomputed catalogue (Phase 6.2) stores this rather than the alternate
+ * gap-to-leader, for a reason that matters here: the band it ships is the
+ * p10–p90 spread of `alternate - real` across seeds, which is not obtainable
+ * by differencing two summary series. Passing `alternateSeries` and letting
+ * this component subtract would silently replace that band with something
+ * else, so precomputed deltas come in through their own prop.
+ */
+export type DeltaPoint = {
+  lap: number;
+  median: number;
+  low: number;
+  high: number;
+  clampedFraction: number;
+};
+
 export type GapChartProps = {
   axis: LapAxis;
   realSeries: Record<string, GapPoint[]>;
@@ -82,9 +101,16 @@ export type GapChartProps = {
   focusDriver?: string;
   /** Median of the ensemble — labelled as such, since it's no single universe. */
   alternateSeries?: AlternatePoint[];
+  /**
+   * Precomputed `alternate - real` with a band of delta quantiles. Takes
+   * precedence over `alternateSeries` when both are given.
+   */
+  deltaSeries?: DeltaPoint[];
   /** Individual seed traces, drawn faintly so the median isn't read as "the" answer. */
   seedSeries?: SeedTrace[];
   divergenceLap?: number;
+  /** Ensemble size behind the median and band, for the legend's honesty. */
+  nRuns?: number;
   safetyCarPeriods?: { kind: string; startLap: number; endLap: number }[];
   height?: number;
   hoverLap?: number | null;
@@ -101,8 +127,10 @@ export default function GapChart({
   mode,
   focusDriver,
   alternateSeries,
+  deltaSeries,
   seedSeries,
   divergenceLap,
+  nRuns,
   safetyCarPeriods = [],
   height = 300,
   hoverLap = null,
@@ -161,21 +189,34 @@ export default function GapChart({
    */
   const clampGap = (gap: number) => Math.max(0, gap);
 
-  /** Delta series: alternate minus real, with band bounds clamped at source. */
-  const deltaInRange = useMemo(
-    () =>
-      alternateInRange.map((p) => {
-        const real = realByLapForFocus.get(p.lap) ?? 0;
-        return {
+  /**
+   * Delta series. Either read straight from a precomputed fixture, or derived
+   * here by differencing the alternate against the real timeline with the band
+   * bounds clamped at source.
+   */
+  const deltaInRange = useMemo(() => {
+    if (deltaSeries) {
+      return deltaSeries
+        .filter((p) => inRange(p.lap) && (branchAnchorLap == null || p.lap >= branchAnchorLap))
+        .map((p) => ({
           lap: p.lap,
-          gap: clampGap(p.gap) - real,
-          low: clampGap(p.paceLow) - real,
-          high: clampGap(p.paceHigh) - real,
+          gap: p.median,
+          low: p.low,
+          high: p.high,
           clampedFraction: p.clampedFraction,
-        };
-      }),
-    [alternateInRange, realByLapForFocus],
-  );
+        }));
+    }
+    return alternateInRange.map((p) => {
+      const real = realByLapForFocus.get(p.lap) ?? 0;
+      return {
+        lap: p.lap,
+        gap: clampGap(p.gap) - real,
+        low: clampGap(p.paceLow) - real,
+        high: clampGap(p.paceHigh) - real,
+        clampedFraction: p.clampedFraction,
+      };
+    });
+  }, [deltaSeries, firstLap, lastLap, branchAnchorLap, alternateInRange, realByLapForFocus]);
 
   /** [min, max] of the y variable. Field mode floors at 0; delta centres on it. */
   const [yLo, yHi] = useMemo<[number, number]>(() => {
@@ -248,6 +289,13 @@ export default function GapChart({
     return map;
   }, [alternateSeries]);
 
+  /** The plotted delta points, keyed by lap, for the hover readout. */
+  const deltaByLap = useMemo(() => {
+    const map = new Map<number, (typeof deltaInRange)[number]>();
+    for (const p of deltaInRange) map.set(p.lap, p);
+    return map;
+  }, [deltaInRange]);
+
   /**
    * Laps whose delta falls outside the robust range. The trace is clipped
    * rather than allowed to set the scale, so these carry the actual number
@@ -293,7 +341,10 @@ export default function GapChart({
               <svg width="18" height="8" aria-hidden="true">
                 <line x1="0" y1="4" x2="18" y2="4" stroke="#A33A2E" strokeWidth="1.75" />
               </svg>
-              alternate <span className="text-ink/45">median of {seedSeries?.length ?? 0} runs</span>
+              alternate{" "}
+              <span className="text-ink/45">
+                median of {nRuns ?? seedSeries?.length ?? 0} runs
+              </span>
             </span>
             <span className="text-ink/45">below = time lost</span>
           </div>
@@ -537,30 +588,38 @@ export default function GapChart({
           <span className="text-ink/40">Hover the chart for a lap readout</span>
         ) : isDelta ? (
           (() => {
-            const alt = alternateByLap.get(hoverLap);
+            // Read the plotted point rather than re-deriving it, so the
+            // readout cannot disagree with the chart under either data source.
+            const point = deltaByLap.get(hoverLap);
             const realGap = realByLapForFocus.get(hoverLap);
+            const alt = alternateByLap.get(hoverLap);
             const postFork = divergenceLap == null || hoverLap >= divergenceLap;
-            // The delta is the plotted variable, so it leads. Underlying
-            // gap-to-leader values follow as context, clamped the same way
-            // the plotted values are so the readout can't disagree with the
-            // chart.
-            const delta =
-              alt != null && realGap != null ? clampGap(alt.gap) - realGap : null;
             return (
               <>
                 <span className="text-ink/60">LAP {hoverLap}</span>
-                {postFork && delta != null ? (
+                {postFork && point != null ? (
                   <>
                     <span className="text-annotation">
-                      {delta >= 0 ? "+" : ""}
-                      {delta.toFixed(2)}s {delta >= 0 ? "lost" : "gained"}
+                      {point.gap >= 0 ? "+" : ""}
+                      {point.gap.toFixed(2)}s {point.gap >= 0 ? "lost" : "gained"}
                     </span>
                     <span className="text-ink/50">
-                      gap to leader: real {realGap!.toFixed(1)}s · alt {clampGap(alt!.gap).toFixed(1)}s
+                      p10–p90 {point.low >= 0 ? "+" : ""}
+                      {point.low.toFixed(2)} to {point.high >= 0 ? "+" : ""}
+                      {point.high.toFixed(2)}s
                     </span>
-                    {alt!.clampedFraction > 0.5 && (
+                    {/* Gap-to-leader context only when the alternate series is
+                        actually available; the precomputed fixtures store the
+                        delta alone, and inventing an "alt" figure from it would
+                        be arithmetic dressed up as data. */}
+                    {realGap != null && alt != null && (
+                      <span className="text-ink/50">
+                        gap to leader: real {realGap.toFixed(1)}s · alt {clampGap(alt.gap).toFixed(1)}s
+                      </span>
+                    )}
+                    {point.clampedFraction > 0.5 && (
                       <span className="text-annotation">
-                        held up ({Math.round(alt!.clampedFraction * 100)}% of runs)
+                        held up ({Math.round(point.clampedFraction * 100)}% of runs)
                       </span>
                     )}
                   </>
