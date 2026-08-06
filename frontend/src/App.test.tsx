@@ -64,10 +64,11 @@ describe("App", () => {
       expect(screen.getByText(/Hungarian Grand Prix/)).toBeInTheDocument(),
     );
     await waitFor(() =>
-      expect(screen.getByText(/time lost or gained vs the real race/i)).toBeInTheDocument(),
+      expect(screen.getByText(/time the decision cost or saved/i)).toBeInTheDocument(),
     );
 
-    expect(requested().sort()).toEqual(["2019_hungarian__VER.json", "2019_hungarian__base.json"]);
+    // HAM, not VER: the opening driver is whoever has a defensible candidate.
+    expect(requested().sort()).toEqual(["2019_hungarian__HAM.json", "2019_hungarian__base.json"]);
   });
 
   it("fetches exactly one additional file when the driver changes", async () => {
@@ -75,10 +76,11 @@ describe("App", () => {
     await waitFor(() => expect(screen.getByText(/Hungarian Grand Prix/)).toBeInTheDocument());
     const before = fetchSpy.mock.calls.length;
 
-    await userEvent.selectOptions(screen.getByLabelText(/^driver$/i), "HAM");
+    // A driver other than the one already open, so the fetch count is meaningful.
+    await userEvent.selectOptions(screen.getByLabelText(/^driver$/i), "VER");
     await waitFor(() => expect(fetchSpy.mock.calls.length).toBe(before + 1));
 
-    expect(requested().at(-1)).toBe("2019_hungarian__HAM.json");
+    expect(requested().at(-1)).toBe("2019_hungarian__VER.json");
     // No re-fetch of the base file: the field data is shared across drivers.
     expect(requested().filter((n) => n.endsWith("__base.json"))).toHaveLength(1);
   });
@@ -91,24 +93,66 @@ describe("App", () => {
     expect(options.length).toBeGreaterThanOrEqual(19);
   });
 
-  it("opens on reality, so the first thing shown is the model's own error", async () => {
+  it("opens on a defensible candidate rather than the biggest number", async () => {
+    // The largest effect in VER's decision space is -52s from moving his lap-67
+    // stop to lap 40, and it is an artifact: his SOFT degradation was fitted
+    // from two laps and came out as exactly 0.0 s/lap. Opening there would
+    // headline a broken number. The opening view must be a real counterfactual
+    // that stays inside the model's evidence.
     render(<App />);
-    await waitFor(() => expect(screen.getByText(/as he actually did/i)).toBeInTheDocument());
-    // VER's real stops are laps 25 and 67; the later one is the demo decision.
-    expect(screen.getByText(/pits on lap 67/)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText(/instead of lap/i)).toBeInTheDocument());
+
+    // Not VER, who has no defensible candidate at Hungary at all: every way of
+    // moving either of his stops runs his HARD stint to age 43 against the 42
+    // he reached, or leans on a SOFT cell fitted from two laps. HAM does.
+    expect((screen.getByLabelText(/^driver$/i) as HTMLSelectElement).value).toBe("HAM");
+    // No caution is raised, because the opening candidate triggers none.
+    expect(screen.queryByText(/past this race's plausibility bound/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/degradation was fitted from/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/extrapolation, not interpolation/i)).not.toBeInTheDocument();
+  });
+
+  it("names the cause when a candidate is an artifact, not just that it is one", async () => {
+    render(<App />);
+    await waitFor(() => expect(screen.getByText(/instead of lap/i)).toBeInTheDocument());
+
+    // VER's lap-67 stop moved to lap 40 is the artifact: -52s, produced by a
+    // SOFT degradation cell fitted from two laps with a rate of exactly zero.
+    await userEvent.selectOptions(screen.getByLabelText(/^driver$/i), "VER");
+    await waitFor(() => expect(screen.getByLabelText(/stop to move/i)).toBeInTheDocument());
+    await userEvent.selectOptions(screen.getByLabelText(/stop to move/i), "67");
+    await waitFor(() => expect(screen.getByRole("slider")).toBeInTheDocument());
+    fireEvent.change(screen.getByRole("slider"), { target: { value: "40" } });
+
+    await waitFor(() =>
+      expect(screen.getByText(/past this race's plausibility bound/i)).toBeInTheDocument(),
+    );
+    // The cause, specifically: two observations and a zero degradation rate.
+    expect(screen.getByText(/degradation was fitted from 2 laps/i)).toBeInTheDocument();
+    expect(screen.getByText(/never wears/i)).toBeInTheDocument();
+  });
+
+  it("splits the effect into pace and traffic rather than reporting one number", async () => {
+    render(<App />);
+    await waitFor(() => expect(screen.getByText(/instead of lap/i)).toBeInTheDocument());
+    expect(screen.getByText(/net by the finish/i)).toBeInTheDocument();
+    expect(screen.getByText(/of which pace/i)).toBeInTheDocument();
+    expect(screen.getByText(/of which traffic/i)).toBeInTheDocument();
   });
 
   it("moving the pit lap re-reads a precomputed ensemble rather than recomputing", async () => {
     render(<App />);
-    await waitFor(() => expect(screen.getByText(/as he actually did/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/instead of lap/i)).toBeInTheDocument());
     const before = fetchSpy.mock.calls.length;
 
     // Drive the slider by value rather than by keystroke: the assertion is
     // about where the ensemble comes from, not about range-input key handling.
     const slider = screen.getByRole("slider") as HTMLInputElement;
+    const shown = () => screen.getByText(/pits on lap \d+/).textContent ?? "";
+    const first = shown();
     fireEvent.change(slider, { target: { value: slider.min } });
 
-    await waitFor(() => expect(screen.getByText(/instead of lap 67/)).toBeInTheDocument());
+    await waitFor(() => expect(shown()).not.toBe(first));
     // The whole decision space came in the driver's single file, so changing
     // the decision costs no network at all.
     expect(fetchSpy.mock.calls.length).toBe(before);

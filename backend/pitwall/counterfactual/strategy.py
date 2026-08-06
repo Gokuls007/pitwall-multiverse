@@ -152,7 +152,15 @@ def _apply_add_pit_stop(snapshot: RaceSnapshot, decision: AddPitStop) -> dict[tu
         (lap.lap_number for lap in driver_laps.values() if lap.is_in_lap and lap.lap_number > decision.lap),
         default=None,
     )
-    range_end = (next_stop_lap - 1) if next_stop_lap is not None else max(driver_laps)
+    # Through the next real stop *inclusive*. That lap belongs to the stint
+    # being shifted, so its tyre age has to be renumbered with the rest of it —
+    # excluding it entirely (as this did until a fixture audit caught it)
+    # conflates "don't move this stop" with "don't renumber this stint", and
+    # left the in-lap carrying reality's age. On 2019 Hungary BOT 5->20 that
+    # produced a tyre jumping from age 25 on lap 45 to age 41 on lap 46. The
+    # stop itself still stays exactly where reality put it: the in-lap and
+    # out-lap flags below are taken from the real record, not synthesised.
+    range_end = next_stop_lap if next_stop_lap is not None else max(driver_laps)
     if next_stop_lap is not None and decision.lap + 1 >= next_stop_lap:
         raise ValueError(
             f"{decision.driver}: an added stop on lap {decision.lap} leaves no room before the next "
@@ -240,7 +248,15 @@ def _apply_change_pit_lap(snapshot: RaceSnapshot, decision: ChangePitLap) -> dic
         (lap.lap_number for lap in driver_laps.values() if lap.is_in_lap and lap.lap_number > decision.original_lap),
         default=None,
     )
-    range_end = (next_stop_lap - 1) if next_stop_lap is not None else max(driver_laps)
+    # Through the next real stop *inclusive*. That lap belongs to the stint
+    # being shifted, so its tyre age has to be renumbered with the rest of it —
+    # excluding it entirely (as this did until a fixture audit caught it)
+    # conflates "don't move this stop" with "don't renumber this stint", and
+    # left the in-lap carrying reality's age. On 2019 Hungary BOT 5->20 that
+    # produced a tyre jumping from age 25 on lap 45 to age 41 on lap 46. The
+    # stop itself still stays exactly where reality put it: the in-lap and
+    # out-lap flags below are taken from the real record, not synthesised.
+    range_end = next_stop_lap if next_stop_lap is not None else max(driver_laps)
     lo = min(decision.original_lap, decision.new_lap)
     shifted_new_stint_start_lap = decision.new_lap + transition_width
     if next_stop_lap is not None and shifted_new_stint_start_lap >= next_stop_lap:
@@ -273,7 +289,9 @@ def _apply_change_pit_lap(snapshot: RaceSnapshot, decision: ChangePitLap) -> dic
         else:
             compound = new_stint_compound
             tyre_age = new_stint_start_age + (lap_number - shifted_new_stint_start_lap)
-            is_in_lap = False
+            # Read from reality rather than forced False: this range now runs
+            # through the driver's next real stop, whose in-lap must survive.
+            is_in_lap = real.is_in_lap
             # Only mark the reset lap itself as the out-lap when there's no
             # separate transition-zone lap to carry that flag instead
             # (transition_width == 1, the ordinary case) — otherwise the

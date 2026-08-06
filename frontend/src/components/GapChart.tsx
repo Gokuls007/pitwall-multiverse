@@ -10,9 +10,22 @@
  *     lib/teamColors), reality only, dimmed by default with one line raised
  *     on hover — twenty hairlines at the 3:1 contrast floor read as spaghetti
  *     no matter how the numeric check scores.
- *   - "focus": one driver, ink = real vs oxide = alternate, y floored by
- *     MIN_Y_EXTENT_S so a sub-second margin reads as small rather than being
- *     auto-scaled into a chasm.
+ *   - "focus": one driver, and the y variable is not gap-to-leader at all but
+ *     the *decision effect* — how much time the counterfactual cost or saved
+ *     against a simulated replay of the real race. The real timeline is
+ *     therefore the zero rule, and y is floored by MIN_Y_EXTENT_S so a
+ *     sub-second effect reads as small rather than auto-scaled into a chasm.
+ *
+ * Focus mode draws up to four things, deliberately distinguished:
+ *
+ *   - the oxide median and its p10–p90 band: the decision effect;
+ *   - three individual seed trajectories, because a band cannot show a bimodal
+ *     ensemble (if he either makes a pass or doesn't, the median sits in a
+ *     region no seed occupied);
+ *   - a dashed ink line: the same alternate measured against the *actual* race,
+ *     so it carries the simulator's replay error too. Separate and labelled,
+ *     never merged into the effect — on Hungary/VER the replay error is 7.4s,
+ *     which would swamp any candidate whose real effect is a couple of seconds.
  *
  * Two things this deliberately does NOT do:
  *
@@ -20,7 +33,8 @@
  *      separates pace variance from accumulated held-up ("stuck behind a car
  *      you can't pass") time, and merging them would silently report "how
  *      much traffic did he hit" as if it were "how unsure are we about his
- *      pace." The band is pace-only; traffic is discrete tick marks.
+ *      pace." The band is pace-only; traffic is discrete tick marks, and the
+ *      pace/traffic split of the net effect is reported in prose beside it.
  *   2. It doesn't rely on colour alone: teammates get distinct dash patterns.
  *
  * Hand-built SVG rather than a chart library because the shared lap axis
@@ -106,6 +120,15 @@ export type GapChartProps = {
    * precedence over `alternateSeries` when both are given.
    */
   deltaSeries?: DeltaPoint[];
+  /**
+   * The same alternate measured against the *actual* race rather than against
+   * the simulated replay of it, so it carries the simulator's replay error too.
+   * Drawn as a separate labelled line because the difference between the two is
+   * itself the useful reading: on Hungary/VER the replay error reaches 7.4s, so
+   * a candidate whose real effect is a couple of seconds would be swamped if
+   * this were presented as the decision's effect.
+   */
+  replayErrorSeries?: { lap: number; value: number }[];
   /** Individual seed traces, drawn faintly so the median isn't read as "the" answer. */
   seedSeries?: SeedTrace[];
   divergenceLap?: number;
@@ -128,6 +151,7 @@ export default function GapChart({
   focusDriver,
   alternateSeries,
   deltaSeries,
+  replayErrorSeries,
   seedSeries,
   divergenceLap,
   nRuns,
@@ -225,6 +249,9 @@ export default function GapChart({
       // outside the resulting range are still drawn, clipped, with an
       // overflow marker carrying the real number — nothing is hidden.
       const values = deltaInRange.flatMap((p) => [p.gap, p.low, p.high]);
+      // The replay-error line shares this axis, so it has to be inside the
+      // sample that sets the range — otherwise it renders permanently clipped.
+      for (const p of replayErrorSeries ?? []) if (inRange(p.lap)) values.push(p.value);
       const med = median(values);
       const mad = median(values.map((v) => Math.abs(v - med)));
       // MIN_Y_EXTENT_S still applies as a floor on the total span, so a small
@@ -244,7 +271,7 @@ export default function GapChart({
     max = Math.max(max, MIN_Y_EXTENT_S);
     const step = max > 60 ? 20 : max > 20 ? 10 : max > 8 ? 2 : 1;
     return [0, Math.max(step, Math.ceil(max / step) * step)];
-  }, [isDelta, deltaInRange, seedSeries, visibleDrivers, realSeries, firstLap, lastLap, realByLapForFocus]);
+  }, [isDelta, deltaInRange, replayErrorSeries, seedSeries, visibleDrivers, realSeries, firstLap, lastLap, realByLapForFocus]);
 
   /** Positive is downward in both modes: a bigger gap, or time lost, reads lower. */
   const y = (v: number) => ((v - yLo) / (yHi - yLo)) * innerHeight;
@@ -289,6 +316,12 @@ export default function GapChart({
     return map;
   }, [alternateSeries]);
 
+  const replayErrorByLap = useMemo(() => {
+    const map = new Map<number, number>();
+    for (const p of replayErrorSeries ?? []) map.set(p.lap, p.value);
+    return map;
+  }, [replayErrorSeries]);
+
   /** The plotted delta points, keyed by lap, for the hover readout. */
   const deltaByLap = useMemo(() => {
     const map = new Map<number, (typeof deltaInRange)[number]>();
@@ -326,7 +359,7 @@ export default function GapChart({
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 px-1 pb-1">
         <figcaption className="label-caps">
           {isDelta
-            ? `${focusDriver} — time lost or gained vs the real race`
+            ? `${focusDriver} — time the decision cost or saved`
             : "Gap to leader — race as it happened"}
         </figcaption>
         {isDelta && (
@@ -341,11 +374,28 @@ export default function GapChart({
               <svg width="18" height="8" aria-hidden="true">
                 <line x1="0" y1="4" x2="18" y2="4" stroke="#A33A2E" strokeWidth="1.75" />
               </svg>
-              alternate{" "}
+              decision effect{" "}
               <span className="text-ink/45">
                 median of {nRuns ?? seedSeries?.length ?? 0} runs
               </span>
             </span>
+            {replayErrorSeries && replayErrorSeries.length > 0 && (
+              <span className="flex items-center gap-1.5">
+                <svg width="18" height="8" aria-hidden="true">
+                  <line
+                    x1="0"
+                    y1="4"
+                    x2="18"
+                    y2="4"
+                    stroke="#1A1917"
+                    strokeOpacity="0.4"
+                    strokeWidth="1"
+                    strokeDasharray="2 3"
+                  />
+                </svg>
+                vs actual <span className="text-ink/45">incl. replay error</span>
+              </span>
+            )}
             <span className="text-ink/45">below = time lost</span>
           </div>
         )}
@@ -430,15 +480,19 @@ export default function GapChart({
               <path
                 key={`seed-${trace.seed}`}
                 d={path(
-                  trace.points.map((p) => ({
-                    lap: p.lap,
-                    gap: clampGap(p.gap) - (realByLapForFocus.get(p.lap) ?? 0),
-                  })),
+                  // Already deltas when they came from a precomputed fixture;
+                  // differencing them again would double-subtract reality.
+                  deltaSeries
+                    ? trace.points
+                    : trace.points.map((p) => ({
+                        lap: p.lap,
+                        gap: clampGap(p.gap) - (realByLapForFocus.get(p.lap) ?? 0),
+                      })),
                 )}
                 fill="none"
                 stroke="#A33A2E"
                 strokeWidth={0.75}
-                strokeOpacity={0.28}
+                strokeOpacity={0.4}
               />
             ))}
 
@@ -473,6 +527,20 @@ export default function GapChart({
                 real
               </text>
             </>
+          )}
+
+          {/* Replay error: the same alternate measured against the actual race.
+              Dashed and in ink rather than oxide, because it is a statement
+              about the model, not about the decision. */}
+          {isDelta && replayErrorSeries && replayErrorSeries.length > 0 && (
+            <path
+              d={path(replayErrorSeries.map((p) => ({ lap: p.lap, gap: p.value })))}
+              fill="none"
+              stroke="#1A1917"
+              strokeWidth={1}
+              strokeOpacity={0.4}
+              strokeDasharray="2 3"
+            />
           )}
 
           {isDelta && deltaInRange.length > 0 && (
@@ -593,6 +661,7 @@ export default function GapChart({
             const point = deltaByLap.get(hoverLap);
             const realGap = realByLapForFocus.get(hoverLap);
             const alt = alternateByLap.get(hoverLap);
+            const replayError = replayErrorByLap.get(hoverLap) ?? null;
             const postFork = divergenceLap == null || hoverLap >= divergenceLap;
             return (
               <>
@@ -608,6 +677,12 @@ export default function GapChart({
                       {point.low.toFixed(2)} to {point.high >= 0 ? "+" : ""}
                       {point.high.toFixed(2)}s
                     </span>
+                    {replayError != null && (
+                      <span className="text-ink/50">
+                        vs actual {replayError >= 0 ? "+" : ""}
+                        {replayError.toFixed(2)}s
+                      </span>
+                    )}
                     {/* Gap-to-leader context only when the alternate series is
                         actually available; the precomputed fixtures store the
                         delta alone, and inventing an "alt" figure from it would

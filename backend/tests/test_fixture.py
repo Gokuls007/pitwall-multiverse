@@ -136,7 +136,7 @@ def test_every_driver_file_has_the_required_shape():
             f"{path.name}: more than one real-marked candidate for the same stop"
         )
         for candidate in candidates:
-            assert candidate["delta"], f"{path.name}: candidate has no delta trace"
+            assert candidate["deltaVsSimulatedReal"], f"{path.name}: candidate has no delta trace"
             assert candidate["classification"], f"{path.name}: candidate has no distribution"
 
 
@@ -147,17 +147,35 @@ def test_no_driver_file_stores_per_seed_lap_state():
     arrays would be gigabytes, and an earlier draft that stored 12 individual
     seed traces per candidate was already 71% seed data and 2-3x the size
     budget.
+
+    Three traces per candidate *are* stored, deliberately -- a p10-p90 band
+    cannot show a bimodal ensemble, so the median can sit where no seed ever
+    was. This test therefore pins the shape that keeps them affordable: a hard
+    cap on the count, and values aligned to the delta series rather than each
+    trace repeating the lap column.
     """
     files = _race_files()
     if not files:
         pytest.skip("no per-driver fixtures; run scripts/build_fixtures.py")
 
-    banned = {"lapStates", "seedTraces", "seedSeries", "states"}
+    banned = {"lapStates", "seedSeries", "states"}
     for path in _driver_files():
         payload = json.loads(path.read_text(encoding="utf-8"))
         for candidate in payload["candidates"]:
             present = banned & set(candidate)
             assert not present, f"{path.name}: per-seed state stored ({present})"
+
+            traces = candidate["seedTraces"]
+            assert len(traces) <= 3, f"{path.name}: {len(traces)} seed traces stored"
+            n_laps = len(candidate["deltaVsSimulatedReal"])
+            for trace in traces:
+                assert set(trace) == {"seed", "values"}, f"{path.name}: seed trace carries extra keys"
+                assert len(trace["values"]) == n_laps, (
+                    f"{path.name}: seed trace has {len(trace['values'])} values against "
+                    f"{n_laps} laps -- the alignment the frontend relies on is broken"
+                )
+            # Same for the replay-error diagnostic.
+            assert len(candidate["deltaVsActual"]) == n_laps, f"{path.name}: deltaVsActual misaligned"
 
 
 def test_race_file_sizes_stay_within_the_stated_budget():
@@ -171,7 +189,12 @@ def test_race_file_sizes_stay_within_the_stated_budget():
     if not files:
         pytest.skip("no per-driver fixtures; run scripts/build_fixtures.py")
 
-    oversized = [(p.name, p.stat().st_size // 1024) for p in files if p.stat().st_size > 600 * 1024]
+    # Raised from 600KB when the candidates gained a second delta series, three
+    # seed trajectories and per-compound fit provenance. The number that matters
+    # is the median (~300KB); this is a regression ceiling, not a target, and it
+    # exists so a stored-fields mistake fails loudly instead of shipping a UI
+    # that stops loading.
+    oversized = [(p.name, p.stat().st_size // 1024) for p in files if p.stat().st_size > 650 * 1024]
     assert not oversized, f"files above the 600KB ceiling: {oversized}"
 
 
@@ -382,7 +405,9 @@ def test_a_moved_pit_stop_produces_a_non_degenerate_delta():
         for candidate in payload["candidates"]:
             shift = abs(candidate["newLap"] - candidate["originalLap"])
             # Post-fork laps only; the anchor row is zero by construction.
-            post_fork = [row for row in candidate["delta"] if row[0] >= candidate["divergenceLap"]]
+            post_fork = [
+                row for row in candidate["deltaVsSimulatedReal"] if row[0] >= candidate["divergenceLap"]
+            ]
             if shift < 10 or len(post_fork) < 10:
                 continue
             checked += 1
@@ -406,3 +431,114 @@ def test_a_moved_pit_stop_produces_a_non_degenerate_delta():
             )
 
     assert checked > 100, f"only {checked} wide-shift candidates checked; guard is too weak"
+
+
+def test_the_reality_reproducing_candidate_has_exactly_zero_decision_effect():
+    """The invariant that pins the baseline.
+
+    `deltaVsSimulatedReal` measures the alternate against an override-free fork
+    at the same lap with the same seed. Phase 4's no-op test already pins that
+    reference byte-for-byte against a no-op `ChangePitLap`, so for the candidate
+    that reproduces reality the decision effect must be exactly 0.000 -- not
+    approximately zero. Any drift here means the baseline has stopped being the
+    paired reference and every candidate's delta has become uninterpretable.
+
+    `deltaVsActual` on the same candidate is the simulator's replay error, and it
+    is emphatically NOT zero (-7.4s by lap 70 on Hungary/VER). That contrast is
+    the reason both series exist: differencing against actual times would put
+    that 7.4s into every candidate, swamping any effect of a couple of seconds.
+    """
+    driver_files = _driver_files()
+    if not driver_files:
+        pytest.skip("no fixtures; run scripts/build_fixtures.py")
+
+    checked = 0
+    for path in driver_files:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        for candidate in payload["candidates"]:
+            if not candidate["isReal"]:
+                continue
+            checked += 1
+            for lap, median, low, high, _clamped in candidate["deltaVsSimulatedReal"]:
+                assert (median, low, high) == (0.0, 0.0, 0.0), (
+                    f"{path.name} lap {lap}: reality-reproducing candidate has a "
+                    f"non-zero decision effect {median}s -- the paired baseline is broken"
+                )
+            for trace in candidate["seedTraces"]:
+                assert set(trace["values"]) == {0.0}, f"{path.name}: seed trace is non-zero"
+
+    assert checked > 50, f"only {checked} reality-reproducing candidates found"
+
+
+def test_every_implausible_answer_has_a_named_cause():
+    """An answer past the plausibility bound must be attributable.
+
+    The bound is a symptom test -- twice the fitted pit-lane loss -- and on its
+    own it only says "this number is too big". Auditing what it caught turned up
+    two unrelated causes it cannot distinguish:
+
+      - 2019 Hungary VER 67->40, -52.8s, entirely pace, resting on a SOFT cell
+        fitted from 2 observations with a degradation rate of exactly 0.0 s/lap
+        and r2 = nan, relied on for 30 post-fork laps.
+      - 2019 Hungary BOT 5->20, -108.4s, of which -86.5s is accumulated held-up
+        time and only -21.9s pace, on cells that are perfectly well fitted.
+
+    So every implausible candidate must be explained by at least one of: running
+    past observed tyre age, resting on a degenerate fit, or being dominated by
+    traffic rather than pace. One that is implausible with none of those is an
+    unexplained engine result, and this test is where it should surface rather
+    than in the UI as a confident minute of gain.
+    """
+    driver_files = _driver_files()
+    if not driver_files:
+        pytest.skip("no fixtures; run scripts/build_fixtures.py")
+
+    unexplained, implausible, total = [], 0, 0
+    for path in driver_files:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        for candidate in payload["candidates"]:
+            total += 1
+            verdict = candidate["plausibility"]
+            # Every candidate carries the verdict, plausible or not.
+            assert set(verdict) >= {
+                "finalDeltaS",
+                "boundS",
+                "implausible",
+                "trafficS",
+                "paceS",
+                "restsOnDegenerateFit",
+                "cause",
+            }, f"{path.name}: incomplete plausibility verdict"
+            assert candidate["fitProvenance"], f"{path.name}: no fit provenance"
+
+            if not verdict["implausible"]:
+                assert verdict["cause"] is None, f"{path.name}: plausible candidate has a cause"
+                continue
+            implausible += 1
+            assert verdict["cause"] in {
+                "degenerateFit",
+                "traffic",
+                "extrapolation",
+                "unexplained",
+            }, f"{path.name}: unknown cause {verdict['cause']!r}"
+            if verdict["cause"] == "unexplained":
+                unexplained.append(
+                    f"{path.name} {candidate['originalLap']}->{candidate['newLap']}: "
+                    f"{verdict['finalDeltaS']}s ({verdict['sPerLap']}s/lap)"
+                )
+
+    assert implausible > 0, "no implausible candidates at all -- is the bound wired up?"
+
+    # Unexplained is a permitted verdict, not a passing grade. The two known
+    # cases (2021 Spanish HAM 28->12 and PER 57->44, both ~+58s lost, ~1.1s/lap,
+    # inside observed tyre age, well-fitted cells, pace-dominated) look like a
+    # genuine consequence of nursing a 30-lap stint after pitting 16 laps early
+    # -- extreme, but not obviously an artifact. The bound was deliberately not
+    # widened to make them disappear. What must not happen is this becoming a
+    # dumping ground: if the share grows, either the bound or the cause taxonomy
+    # is wrong and needs revisiting rather than tolerating.
+    share = len(unexplained) / max(1, total)
+    assert share < 0.005, (
+        f"{len(unexplained)} of {total} candidates ({share:.2%}) are implausible with no "
+        "identified cause, which is too many to wave through: " + "; ".join(unexplained[:10])
+    )

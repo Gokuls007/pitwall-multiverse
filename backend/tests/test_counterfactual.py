@@ -256,3 +256,36 @@ def test_add_pit_stop_runs_end_to_end_and_costs_time_in_the_near_term(hungary_20
     with_stop_t, without_t = cumulative(with_stop, 53), cumulative(without, 53)
     assert with_stop_t is not None and without_t is not None
     assert with_stop_t > without_t, "an added pit stop must cost time in the laps immediately following it"
+
+
+def test_shifting_a_stop_renumbers_the_following_stint_through_its_own_in_lap(hungary_2019):
+    """The affected range must include the driver's *next* real stop, because
+    that lap belongs to the stint being shifted.
+
+    Found by auditing generated fixtures: 2019 Hungary BOT really stopped on
+    laps 5 and 46. Shifting the first stop to lap 20 renumbered the HARD stint
+    from lap 21 (age 1) but stopped at lap 45 (age 25), leaving lap 46 with
+    reality's age of 41 — a tyre ageing 16 laps in one lap, and a lap simulated
+    at the wrong pace on every candidate that moves a stop with another stop
+    after it.
+
+    The stop must still happen exactly where reality put it. Both halves are
+    asserted: contiguous ages, and the in-lap preserved.
+    """
+    snapshot, _ = hungary_2019
+    overrides = apply_decision(snapshot, ChangePitLap(driver="BOT", original_lap=5, new_lap=20))
+
+    real = {lap.lap_number: lap for lap in snapshot.laps if lap.driver == "BOT"}
+    effective = {lap: overrides.get(("BOT", lap), real.get(lap)) for lap in sorted(real)}
+
+    # Lap 46 is BOT's next real stop and must still be an in-lap.
+    assert effective[46].is_in_lap, "the following real stop was overwritten"
+    assert ("BOT", 46) in overrides, "the following stop's lap was never renumbered"
+
+    # Tyre age must advance by exactly one lap at a time within a stint.
+    for lap in range(21, 47):
+        previous, current = effective[lap - 1], effective[lap]
+        if previous.compound == current.compound and not previous.is_in_lap:
+            assert current.tyre_life == previous.tyre_life + 1, (
+                f"lap {lap}: tyre age jumped {previous.tyre_life} -> {current.tyre_life}"
+            )

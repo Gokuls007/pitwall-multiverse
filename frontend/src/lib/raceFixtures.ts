@@ -31,13 +31,66 @@ export type StintRun = {
   firstExtrapolatedLap: number | null;
 };
 
+/** One driver/compound degradation cell, and whether it can be leaned on. */
+export type FitCell = {
+  compound: string;
+  nObservations: number;
+  /** Post-fork laps this candidate actually runs on the compound. */
+  postForkLaps: number;
+  rSquared?: number | null;
+  linearDegSPerLap?: number;
+  cliffLap?: number | null;
+  degenerate: boolean;
+};
+
+export type Plausibility = {
+  finalDeltaS: number;
+  sPerLap: number;
+  /** Twice the fitted pit-lane loss. Past it, the answer is an artifact. */
+  boundS: number;
+  implausible: boolean;
+  /** Of `finalDeltaS`, how much is accumulated held-up time versus pace. */
+  trafficS: number;
+  paceS: number;
+  restsOnDegenerateFit: boolean;
+  /**
+   * Which part of the model produced an implausible answer, named by the
+   * generator so this and the backend test cannot drift apart. `null` when the
+   * candidate is plausible. `"unexplained"` is a real value, not a gap: a
+   * handful of candidates exceed the bound with none of the known causes, and
+   * saying so beats attributing them to a mechanism that isn't responsible.
+   */
+  cause: "degenerateFit" | "traffic" | "extrapolation" | "unexplained" | null;
+};
+
 export type Candidate = {
   originalLap: number;
   newLap: number;
   isReal: boolean;
   divergenceLap: number;
-  /** Wire format is a tuple array to keep the payload small. */
-  delta: [number, number, number, number, number][];
+  /**
+   * The decision effect: alternate minus the override-free fork at the same lap
+   * with the same seed. Tuple array to keep the payload small —
+   * `[lap, median, p10, p90, clampedFraction]`.
+   */
+  deltaVsSimulatedReal: [number, number, number, number, number][];
+  /**
+   * The same alternate against the *ingested* times, so it carries the
+   * simulator's replay error as well as the decision's effect. A labelled
+   * model-quality diagnostic, never the answer. Aligned index-for-index with
+   * `deltaVsSimulatedReal` rather than repeating the lap column.
+   */
+  deltaVsActual: [number | null][];
+  /**
+   * Three real trajectories of the decision effect, at the p10/p50/p90 of final
+   * delta. `values` is aligned with `deltaVsSimulatedReal`. These exist because
+   * a p10–p90 band cannot show a bimodal ensemble: if he either makes the pass
+   * or doesn't, the band spans both modes and the median line sits in a region
+   * no seed occupied.
+   */
+  seedTraces: { seed: number; values: number[] }[];
+  plausibility: Plausibility;
+  fitProvenance: FitCell[];
   classification: Record<string, Record<string, number>>;
   clampLaps: number[];
   extrapolatedLaps: number;
@@ -129,6 +182,13 @@ export type RaceBase = {
     status: string;
     retiredOnLap: number | null;
     hasCandidates: boolean;
+    /**
+     * Whether any of this driver's decision space is defensible — inside
+     * observed tyre age, not leaning on a degenerate degradation cell, inside
+     * the plausibility bound. Carried on the shared base file because the UI
+     * needs it to choose which driver to open on, before fetching anyone.
+     */
+    hasDefensibleCandidate: boolean;
   }[];
   /** driver -> [[lap, gapToLeader], ...] */
   realSeries: Record<string, [number, number][]>;
@@ -196,11 +256,68 @@ export function clearFixtureCache(): void {
 
 /** Expand the compact wire tuples into named fields. */
 export function toDeltaPoints(candidate: Candidate): DeltaPoint[] {
-  return candidate.delta.map(([lap, median, low, high, clampedFraction]) => ({
+  return candidate.deltaVsSimulatedReal.map(([lap, median, low, high, clampedFraction]) => ({
     lap,
     median,
     low,
     high,
     clampedFraction,
   }));
+}
+
+/**
+ * The replay-error diagnostic, re-joined to its laps. Laps where the driver has
+ * no real record (he retired) carry no value and are dropped rather than being
+ * plotted at zero.
+ */
+export function toActualPoints(candidate: Candidate): { lap: number; value: number }[] {
+  return candidate.deltaVsActual
+    .map(([value], i) => ({ lap: candidate.deltaVsSimulatedReal[i]?.[0] ?? -1, value }))
+    .filter((p): p is { lap: number; value: number } => p.value != null && p.lap >= 0);
+}
+
+/** Seed trajectories, re-joined to their laps. */
+export function toSeedPoints(candidate: Candidate): { seed: number; points: DeltaPoint[] }[] {
+  return candidate.seedTraces.map((trace) => ({
+    seed: trace.seed,
+    points: trace.values.map((value, i) => ({
+      lap: candidate.deltaVsSimulatedReal[i]?.[0] ?? -1,
+      median: value,
+      low: value,
+      high: value,
+      clampedFraction: 0,
+    })),
+  }));
+}
+
+/**
+ * The candidate to open on.
+ *
+ * Not reality, and emphatically not the largest effect. The largest effects in
+ * this catalogue are artifacts: 2019 Hungary VER 67→40 gains 52s because his
+ * SOFT degradation was fitted from two laps and came out as exactly zero, so
+ * leading with it would headline a broken number that happens to be flagged.
+ * Preference order:
+ *
+ *   1. a genuine counterfactual whose stints stay inside observed tyre age and
+ *      which doesn't rest on a degenerate fit, nearest to reality;
+ *   2. failing that, the nearest plausible one;
+ *   3. failing that, reality itself.
+ */
+export function pickOpeningCandidate(candidates: Candidate[]): Candidate | null {
+  if (candidates.length === 0) return null;
+  const distance = (c: Candidate) => Math.abs(c.newLap - c.originalLap);
+  const byDistance = [...candidates].sort((a, b) => distance(a) - distance(b));
+  return (
+    byDistance.find(
+      (c) =>
+        !c.isReal &&
+        c.extrapolatedLaps === 0 &&
+        !c.plausibility.restsOnDegenerateFit &&
+        !c.plausibility.implausible,
+    ) ??
+    byDistance.find((c) => !c.isReal && !c.plausibility.implausible) ??
+    candidates.find((c) => c.isReal) ??
+    byDistance[0]
+  );
 }

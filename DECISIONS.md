@@ -3154,3 +3154,168 @@ demo without a 9-minute generation step and a warm FastF1 cache. If the history
 does become a problem the exit is clean — the generator is committed, the output
 is reproducible from it, and the fixture tests already skip when the directory
 is absent.
+
+### 2026-08-06 — Phase 6.2, second pass: the baseline was wrong and the headline number was an artifact
+
+Four corrections from external review, in order of how much they changed.
+
+**1. The baseline conflated the decision with the simulator's replay error.**
+The delta was `simulated alternate − actual cumulative time`, so every
+candidate carried the replay error as well as the decision's effect. On
+Hungary/VER that error is **−7.4s by lap 70**, which is fine next to a 50s
+swing and fatal next to a 2s one.
+
+The baseline is now `fork_and_simulate(..., overrides={})` at the *same fork
+lap with the same seed* — the simulated replay of reality. Both sides come from
+the simulator, so the systematic component cancels. Two consequences worth
+recording:
+
+- The reality-reproducing candidate's decision effect is now **exactly 0.000**,
+  not approximately zero, because Phase 4's no-op test already pins that
+  reference byte-for-byte against a no-op `ChangePitLap`. That is now asserted
+  (`test_the_reality_reproducing_candidate_has_exactly_zero_decision_effect`)
+  and it is a much sharper invariant than anything a tolerance could give.
+- Pairing by seed cancels the systematic error and the shared pre-fork history
+  exactly, but **not** the stochastic draws: once the decision changes a lap
+  time the two runs consume their generator differently, so the noise diverges
+  after the fork by construction. That residual is what the p10–p90 band
+  reports. Stated because it would be easy to overclaim "model error cancels".
+
+The measurement that shows why this mattered: VER 67→65 reads **−8.3s** as a
+decision effect and **−15.2s** against actual times. Half of the naive number
+was the simulator failing to replay the real race.
+
+Cost: one extra ensemble per distinct fork lap. Because the baseline has no
+overrides the whole field runs its real strategy, so it depends only on the
+fork lap — one memo per worker serves every driver forking there. +24s per
+race, ~25MB per worker.
+
+**2. The −68.5s headline was an artifact, and the cause is worse than
+"linear extrapolation".** Moving VER's stop from 67 to 40 finished the race
+about a second a lap faster, which does not happen. The review's diagnosis was
+linear degradation fits extrapolating without a cliff. The actual cause is
+sharper: **his SOFT cell is fitted from 2 observations, with a linear
+degradation rate of exactly 0.0000 s/lap and r² = nan.** The model has been told
+Verstappen's softs never wear, so they stay ~1.5s/lap faster than his hards at
+any age and 4.6s/lap faster once the hard hits its fitted cliff at 34. Run that
+for 30 laps and it gains a minute.
+
+`extrapolatedLaps` flagged the 27 laps past observed age and the ochre shading
+fired correctly — but nothing said the cell itself was degenerate. So the
+per-candidate record now carries `fitProvenance`: per compound, the observation
+count, r², degradation rate, cliff lap, and how many post-fork laps the answer
+actually runs on it. A first version over-fired (every VER candidate touches
+that SOFT cell, because his real final stint is on softs, so moving his *first*
+stop by one lap was flagged on the strength of three laps); it is now weighted
+by reliance.
+
+**3. A bound alone cannot say why.** Implausible is now recorded per candidate —
+final effect beyond twice the fitted pit-lane loss (41.7s at Hungary). Auditing
+what it caught immediately turned up a case the extrapolation flag and the
+degenerate-fit flag both miss:
+
+| | VER 67→40 | BOT 5→20 |
+|---|---|---|
+| net effect | −52.8s | −108.4s |
+| of which pace | −52.8s | −21.9s |
+| of which traffic | 0.0s | **−86.5s** |
+| beyond observed tyre age | 27 laps | **0 laps** |
+| rests on degenerate fit | **yes** (SOFT, n=2) | no (MEDIUM n=25, r²=0.74, cliff at 12) |
+
+BOT's case is not a tyre problem at all. His real race was compromised — he
+pitted on lap 5 after first-lap contact and fell to the back — so the baseline
+is clamped behind cars on **40 of 65 laps for 119.2s** of accumulated held-up
+time, against 54.1s in the alternate. Most of the 108s is not driving quicker,
+it is not being stuck. Arguably a real effect, but it rests on the overtaking
+model rather than the tyre model, and one number cannot say which.
+
+So `plausibility` now carries `paceS` and `trafficS`, and the UI reports the
+split for every candidate, not only the broken ones — "he gained 8s" and "he
+gained 8s of which 6 were not being stuck behind a Williams" are different
+claims. `test_every_implausible_answer_has_a_named_cause` requires every
+implausible candidate to be attributable to at least one of: past observed tyre
+age, resting on a degenerate fit, or traffic-dominated. One that is implausible
+with none of those is an unexplained engine result and fails the suite.
+
+**A real engine bug, found while auditing BOT.** `_apply_change_pit_lap` set
+`range_end = next_stop_lap - 1`, so the shifted stint's tyre ages were
+renumbered up to the lap *before* the driver's next real stop — leaving that
+in-lap carrying reality's age. On BOT 5→20 the tyre went from age 25 on lap 45
+to **age 41 on lap 46**, ageing sixteen laps in one. The exclusion was there to
+stop the override clobbering an unrelated later stop, which is right about the
+*pit event* and wrong about the *tyre age*: that lap belongs to the stint being
+shifted. Range now runs through the next stop inclusive, with `is_in_lap` read
+from the real record so the stop stays exactly where reality put it. Regression
+test asserts both halves — contiguous ages, and the in-lap preserved. Worth
+noting this moved VER 67→40 by 10s (−62.7 → −52.8), so it was not cosmetic.
+
+**4. Three seed traces are back.** Dropping all twelve was justified on payload
+grounds (71.3% of the file) and on the argument that the p10–p90 band covers
+"a lone median reads as the answer". The second half was incomplete: a band
+cannot show a *bimodal* ensemble. If the driver either completes a pass or
+doesn't, the band spans both modes and the median sits where no seed ever was —
+the classification distribution reveals that split in the outcome while the
+band hides it in the trajectory. Three traces cost one number per lap each
+(~9% of what twelve cost, since they carry no lap column) and are chosen at the
+p10/p50/p90 of final delta rather than at random, so when the ensemble splits
+they land in the modes instead of all three landing in the more populous one.
+
+**What the demo opens on now, and a number worth stating plainly.** Not
+reality, and deliberately not the largest effect. `pickOpeningCandidate` takes
+the counterfactual nearest reality that stays inside observed tyre age and
+doesn't rest on a degenerate fit; the stop selector likewise defaults to a stop
+that has one. For VER at Hungary that is stop #1 (lap 25) moved to 24: −1.6s,
+all pace, no caution raised.
+
+The number worth stating plainly, because it is the most honest thing this
+phase produced: **of 1,580 candidates on Hungary, 58 (4%) stay inside observed
+tyre age.** Fitting on a single race means almost every counterfactual this tool
+can offer is extrapolating. That is not a defect to hide behind a slider — it is
+the finding, and it is the strongest argument yet for Phase 9's catalogue
+expansion.
+
+**Sizes after all of this.** Two delta series, three seed traces and fit
+provenance per candidate: median per-driver file 181KB → **~305KB**, max
+**~594KB**. The test ceiling moved 600KB → 650KB as a regression guard, not a
+target. Rebuild ~140s per race against ~110s before.
+
+**Two more real bugs, both found by auditing what the new flags caught.**
+
+`_stint_runs` merged stints that shared a compound across a real pit stop,
+because it only tested compound equality and lap adjacency. On 2021 Spanish HAM
+28->12 it reported **one 54-lap MEDIUM stint** where the strategy is a 30-lap
+stint, the real lap-42 stop, and 24 laps on a used set starting at age 7 -- so
+the timeline drew no stop and the panel offered "a 54-lap stint". Runs now also
+require tyre-age continuity, which is exactly the signal a fresh set breaks.
+
+The in-lap renumbering fix turned out to matter more than "one lap of pace".
+Including the next real stop in the renumbered range means
+`extrapolation_by_lap` now checks that lap too -- and it changed the evidence
+accounting: **VER has no inside-evidence counterfactual at Hungary at all**,
+because every way of moving either stop runs his HARD stint to age 43 against
+the 42 he actually reached. That was previously invisible.
+
+**Which is why the opening view is no longer VER.** `hasDefensibleCandidate` is
+computed per driver into the shared base file -- the UI needs it to choose a
+driver before it has fetched anyone -- and the app opens on the best-finishing
+driver who has one. At Hungary that is HAM, stop #2 moved from 48 to 47:
+**+0.61s, of which +0.65s pace and -0.04s traffic**, entirely inside the 34 laps
+he ran on that compound, no caution raised. The old default is one click away
+and still says what it is: VER 67->25 reads -96.3s and carries both cautions,
+naming the bound *and* "its SOFT degradation was fitted from 2 laps and came out
+as exactly zero, so the model believes that tyre never wears -- and this answer
+runs 45 laps on it."
+
+Verified in the browser. The clearest thing on screen is unplanned: on the
+opening HAM candidate the decision effect sits near zero across the whole window
+while the dashed "vs actual" line walks out to about -8s. The replay error is
+visibly the larger term. Separating the two was not a refinement.
+
+**Sizes, measured and drifting.** Median per-driver file 181KB -> ~305KB
+(Spanish 469KB), max 635KB, catalogue 21.2MB -> 34.6MB. Per-field on the largest
+file: delta series 28%, classification 19%, seed traces 19%, stints 10%, replay
+error 7%, fit provenance 6%. The identified fix is not compression --
+`fitProvenance`'s static cell data and `plausibility.boundS` are per-driver and
+per-race constants repeated on all 124 candidates, so hoisting them into `meta`
+recovers ~9%. Not done here, to keep the change set to the review items. The
+650KB ceiling is a regression guard, not a target.

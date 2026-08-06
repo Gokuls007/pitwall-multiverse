@@ -30,7 +30,10 @@ import {
   availableRaces,
   loadDriverFixture,
   loadRaceBase,
+  pickOpeningCandidate,
+  toActualPoints,
   toDeltaPoints,
+  toSeedPoints,
   type Candidate,
   type DriverFixture,
   type RaceBase,
@@ -80,8 +83,19 @@ export default function App() {
         setBase(b);
         // Prefer the previously-selected driver if this race has him too, so
         // switching races to compare the same driver doesn't reset the choice.
+        //
+        // Otherwise open on a driver with a *defensible* counterfactual rather
+        // than on a fixed favourite. This used to default to VER, who at
+        // Hungary has none: every way of moving either of his stops either runs
+        // his HARD stint one lap past the oldest he reached or leans on a SOFT
+        // cell fitted from two laps. Opening there meant the first thing a
+        // reader saw was a caution.
         const list = availableDrivers(raceKey);
-        setDriver(list.includes(driver) ? driver : (list.includes("VER") ? "VER" : (list[0] ?? "")));
+        if (list.includes(driver)) return;
+        const defensible = b.drivers
+          .filter((d) => d.hasCandidates && d.hasDefensibleCandidate && list.includes(d.code))
+          .sort((x, y) => (x.finishPosition ?? 99) - (y.finishPosition ?? 99));
+        setDriver(defensible[0]?.code ?? list[0] ?? "");
       })
       .catch((e: Error) => live && setError(e.message));
     return () => {
@@ -119,8 +133,26 @@ export default function App() {
   );
   const [stopLap, setStopLap] = useState<number | null>(null);
   useEffect(() => {
-    setStopLap(stopLaps.length ? stopLaps[stopLaps.length - 1] : null);
-  }, [stopLaps]);
+    if (!stopLaps.length) {
+      setStopLap(null);
+      return;
+    }
+    // Default to a stop that has at least one counterfactual inside the
+    // model's evidence, so the view opens on something defensible. VER at
+    // Hungary has two stops and only the first (lap 25) qualifies: every way
+    // of moving the lap-67 stop leans on a SOFT cell fitted from two laps.
+    const usable = stopLaps.filter((lap) =>
+      (fixture?.candidates ?? []).some(
+        (c) =>
+          c.originalLap === lap &&
+          !c.isReal &&
+          c.extrapolatedLaps === 0 &&
+          !c.plausibility.restsOnDegenerateFit,
+      ),
+    );
+    const pool = usable.length ? usable : stopLaps;
+    setStopLap(pool[pool.length - 1]);
+  }, [stopLaps, fixture]);
 
   const stopCandidates = useMemo(
     () =>
@@ -132,9 +164,11 @@ export default function App() {
 
   const [previewLap, setPreviewLap] = useState<number | null>(null);
   useEffect(() => {
-    // Open on reality: the candidate that reproduces what actually happened.
-    const real = stopCandidates.find((c) => c.isReal);
-    setPreviewLap(real?.newLap ?? stopCandidates[0]?.newLap ?? null);
+    // Not reality, and deliberately not the biggest effect — see
+    // `pickOpeningCandidate`. The largest numbers in this catalogue are
+    // artifacts of degenerate tyre fits, so opening on one would headline a
+    // broken answer that merely happens to be flagged.
+    setPreviewLap(pickOpeningCandidate(stopCandidates)?.newLap ?? null);
   }, [stopCandidates]);
 
   const selected: Candidate | null = useMemo(
@@ -242,16 +276,21 @@ export default function App() {
     [mode, wholeRace, divergenceLap, totalLaps],
   );
 
-  const deltaSeries = useMemo(() => {
-    if (!selected) return undefined;
-    return toDeltaPoints(selected).map((p) => ({
-      lap: p.lap,
-      median: p.median,
-      low: p.low,
-      high: p.high,
-      clampedFraction: p.clampedFraction,
-    }));
-  }, [selected]);
+  const deltaSeries = useMemo(() => (selected ? toDeltaPoints(selected) : undefined), [selected]);
+  const replayErrorSeries = useMemo(
+    () => (selected ? toActualPoints(selected) : undefined),
+    [selected],
+  );
+  const seedSeries = useMemo(
+    () =>
+      selected
+        ? toSeedPoints(selected).map((t) => ({
+            seed: t.seed,
+            points: t.points.map((p) => ({ lap: p.lap, gap: p.median })),
+          }))
+        : undefined,
+    [selected],
+  );
 
   /** Candidate table in the shape DecisionPanel reads. */
   const panelCandidates = useMemo<PanelCandidate[]>(
@@ -301,6 +340,15 @@ export default function App() {
   const focusDistribution = useMemo(
     () => classificationRows.find((r) => r.driver === driver) ?? null,
     [classificationRows, driver],
+  );
+
+  /** Degradation cells this candidate leans on that are too thin to lean on. */
+  const degenerateCells = useMemo(
+    () =>
+      (selected?.fitProvenance ?? []).filter(
+        (cell) => cell.degenerate && cell.postForkLaps > 0,
+      ),
+    [selected],
   );
 
   const nSeeds = fixture?.meta.nSeeds ?? 0;
@@ -427,6 +475,8 @@ export default function App() {
               mode={mode}
               focusDriver={driver}
               deltaSeries={deltaSeries}
+              replayErrorSeries={replayErrorSeries}
+              seedSeries={seedSeries}
               divergenceLap={divergenceLap ?? undefined}
               nRuns={nSeeds}
               safetyCarPeriods={base?.safetyCarPeriods ?? []}
@@ -455,7 +505,9 @@ export default function App() {
               background: "repeating-linear-gradient(45deg,#A8761F 0 2px,transparent 2px 4px)",
             }}
           />
-          {beyondEvidence.extrapolatedLaps} laps of the alternate {beyondEvidence.compound} stint run
+          {beyondEvidence.extrapolatedLaps}{" "}
+          {beyondEvidence.extrapolatedLaps === 1 ? "lap" : "laps"} of the alternate{" "}
+          {beyondEvidence.compound} stint {beyondEvidence.extrapolatedLaps === 1 ? "runs" : "run"}{" "}
           beyond any tyre age {driver} actually reached on that compound (max observed{" "}
           {fixture.meta.observedMaxTyreAge[beyondEvidence.compound] ?? 0} laps, this stint reaches{" "}
           {beyondEvidence.endTyreAge}) — extrapolation, not interpolation.
@@ -497,17 +549,74 @@ export default function App() {
             </p>
             {/* Caveat in the prose voice, and it carries a real measurement
                 rather than a generic disclaimer. */}
-            <p className="mt-2 max-w-prose font-serif text-[0.85rem] italic leading-snug text-ink/70">
-              {selected.clampLaps.length > 0 ? (
-                <>
-                  On {selected.clampLaps.length} of the simulated laps the majority of runs had{" "}
-                  {driver} held up behind a car he could not pass, so that much of the delta is
-                  traffic rather than pace.
-                </>
-              ) : (
-                <>No lap in this ensemble was dominated by traffic, so the delta is pace-driven.</>
-              )}
-            </p>
+            {/* The decomposition, always — not only when something is wrong.
+                "He gained 8 seconds" and "he gained 8 seconds of which 6 were
+                not being stuck behind a Williams" are different claims. */}
+            <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 font-mono text-micro text-ink/70">
+              <dt>net by the finish</dt>
+              <dd className="text-ink">
+                {selected.plausibility.finalDeltaS >= 0 ? "+" : ""}
+                {selected.plausibility.finalDeltaS.toFixed(2)}s
+              </dd>
+              <dt>of which pace</dt>
+              <dd>
+                {selected.plausibility.paceS >= 0 ? "+" : ""}
+                {selected.plausibility.paceS.toFixed(2)}s
+              </dd>
+              <dt>of which traffic</dt>
+              <dd>
+                {selected.plausibility.trafficS >= 0 ? "+" : ""}
+                {selected.plausibility.trafficS.toFixed(2)}s
+                {selected.clampLaps.length > 0 && (
+                  <span className="text-ink/45">
+                    {" "}
+                    · held up on {selected.clampLaps.length} laps
+                  </span>
+                )}
+              </dd>
+            </dl>
+
+            {/* Cause, not just symptom. A candidate past the plausibility bound
+                is useless as an answer unless the reader is told which part of
+                the model produced it. */}
+            {(selected.plausibility.implausible ||
+              selected.plausibility.restsOnDegenerateFit) && (
+              <div className="mt-3 max-w-prose border-l-2 border-caution/50 pl-3 font-serif text-[0.85rem] leading-snug text-caution">
+                {selected.plausibility.implausible && (
+                  <p>
+                    {Math.abs(selected.plausibility.finalDeltaS).toFixed(0)}s from one moved pit
+                    stop is past this race&apos;s plausibility bound of{" "}
+                    {selected.plausibility.boundS.toFixed(0)}s (twice the fitted pit-lane loss).
+                    Read it as a property of the model, not a strategy finding.
+                  </p>
+                )}
+                {degenerateCells.map((cell) => (
+                  <p key={cell.compound} className={selected.plausibility.implausible ? "mt-1" : ""}>
+                    Its {cell.compound} degradation was fitted from {cell.nObservations}{" "}
+                    {cell.nObservations === 1 ? "lap" : "laps"}
+                    {cell.linearDegSPerLap === 0
+                      ? " and came out as exactly zero, so the model believes that tyre never wears"
+                      : ""}
+                    — and this answer runs {cell.postForkLaps} laps on it.
+                  </p>
+                ))}
+                {selected.plausibility.cause === "traffic" && (
+                  <p className="mt-1">
+                    Most of it is traffic, not pace: {selected.plausibility.trafficS.toFixed(0)}s of
+                    the {selected.plausibility.finalDeltaS.toFixed(0)}s is accumulated time held up
+                    behind cars, which rests on the overtaking model rather than the tyre model.
+                  </p>
+                )}
+                {selected.plausibility.cause === "unexplained" && (
+                  <p className="mt-1">
+                    No single part of the model accounts for it: the stints stay inside observed
+                    tyre age, the degradation cells are well fitted, and it is pace rather than
+                    traffic. Flagged as large without an identified cause rather than explained
+                    away.
+                  </p>
+                )}
+              </div>
+            )}
           </div>
 
           {/* The focus driver's own spread, called out. The full field is in

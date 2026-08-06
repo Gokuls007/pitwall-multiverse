@@ -5,7 +5,10 @@ import {
   cachedKeys,
   fixtureKey,
   loadDriverFixture,
+  pickOpeningCandidate,
+  toActualPoints,
   toDeltaPoints,
+  toSeedPoints,
   type Candidate,
 } from "./raceFixtures";
 
@@ -69,12 +72,65 @@ describe("per-driver fixture loading", () => {
 
   it("expands the compact wire tuples into named fields", () => {
     const candidate = {
-      delta: [
+      deltaVsSimulatedReal: [
         [49, 0, 0, 0, 0],
         [50, 2.23, 1.1, 3.4, 0.6],
       ],
     } as unknown as Candidate;
     const points = toDeltaPoints(candidate);
     expect(points[1]).toEqual({ lap: 50, median: 2.23, low: 1.1, high: 3.4, clampedFraction: 0.6 });
+  });
+
+  it("re-joins the aligned diagnostic series to their laps", () => {
+    // `deltaVsActual` and `seedTraces` carry no lap column — they are aligned
+    // index-for-index with the decision-effect series, which is what keeps the
+    // per-driver files inside their size budget. If that alignment is ever
+    // broken the diagnostic silently plots against the wrong laps.
+    const candidate = {
+      deltaVsSimulatedReal: [
+        [49, 0, 0, 0, 0],
+        [50, 2.23, 1.1, 3.4, 0],
+        [51, 3.0, 2.0, 4.0, 0],
+      ],
+      deltaVsActual: [[0], [9.1], [null]],
+      seedTraces: [{ seed: 7, values: [0, 1.5, 2.5] }],
+    } as unknown as Candidate;
+
+    // Lap 51 has no real record (the driver retired), so it is dropped rather
+    // than plotted at zero.
+    expect(toActualPoints(candidate)).toEqual([
+      { lap: 49, value: 0 },
+      { lap: 50, value: 9.1 },
+    ]);
+    expect(toSeedPoints(candidate)[0].points.map((p) => [p.lap, p.median])).toEqual([
+      [49, 0],
+      [50, 1.5],
+      [51, 2.5],
+    ]);
+  });
+
+  it("opens on a defensible candidate, not the biggest number", () => {
+    // The largest effects in this catalogue are artifacts of degenerate tyre
+    // fits, so the opening view must not be chosen by magnitude.
+    const make = (over: Record<string, unknown>) =>
+      ({
+        originalLap: 40,
+        isReal: false,
+        extrapolatedLaps: 0,
+        plausibility: { implausible: false, restsOnDegenerateFit: false },
+        ...over,
+      }) as unknown as Candidate;
+
+    const reality = make({ newLap: 40, isReal: true });
+    const huge = make({ newLap: 20, plausibility: { implausible: true, restsOnDegenerateFit: true } });
+    const thinFit = make({ newLap: 39, plausibility: { implausible: false, restsOnDegenerateFit: true } });
+    const clean = make({ newLap: 37 });
+
+    expect(pickOpeningCandidate([reality, huge, thinFit, clean])?.newLap).toBe(37);
+    // With nothing inside evidence, fall back to the nearest plausible one
+    // rather than to reality — but never to the implausible one.
+    expect(pickOpeningCandidate([reality, huge, thinFit])?.newLap).toBe(39);
+    expect(pickOpeningCandidate([reality, huge])?.newLap).toBe(40);
+    expect(pickOpeningCandidate([])).toBeNull();
   });
 });
