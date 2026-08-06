@@ -50,6 +50,36 @@ export type DecisionPanelProps = {
   observedMaxTyreAge: Record<string, number>;
 };
 
+/**
+ * The teaching sentence as plain text.
+ *
+ * Phase 6.3 moved the control onto the pit-stop tick itself, and the spec
+ * requires `aria-valuetext` to carry this sentence rather than just a lap
+ * number — a screen-reader user should get the consequence of the decision, not
+ * the coordinate. The rendered version below is the same content with the
+ * severity span; they are built from the same fields so they cannot disagree
+ * about the numbers, and this one is what a screen reader reads while dragging.
+ */
+export function previewSentence(
+  candidate: Candidate,
+  driver: string,
+  observedMaxTyreAge: Record<string, number>,
+): string {
+  const compound = candidate.newStintCompound ?? "";
+  const observed = observedMaxTyreAge[compound] ?? 0;
+  const base =
+    `Lap ${candidate.newLap}: a ${candidate.newStintLaps}-lap stint on ` +
+    `${compound.toLowerCase()}s, reaching tyre age ${candidate.newStintEndTyreAge}`;
+  if (candidate.beyondEvidenceLaps <= 0) {
+    return `${base} — within the ${observed} laps ${driver} actually ran on that compound.`;
+  }
+  return (
+    `${base} — ${candidate.beyondEvidenceLaps} lap` +
+    `${candidate.beyondEvidenceLaps === 1 ? "" : "s"} beyond the ${observed} ` +
+    `${driver} actually ran on that compound, ${severity(candidate.beyondEvidenceLaps).label}.`
+  );
+}
+
 /** Escalating severity rather than a binary pass/fail. */
 function severity(beyondLaps: number): { label: string; className: string } {
   if (beyondLaps === 0) return { label: "within observed data", className: "text-ink/60" };
@@ -69,8 +99,6 @@ export default function DecisionPanel({
 }: DecisionPanelProps) {
   if (candidates.length === 0) return null;
 
-  const first = candidates[0].newLap;
-  const last = candidates[candidates.length - 1].newLap;
   const current = candidates.find((c) => c.newLap === previewLap) ?? candidates[0];
   const compound = current.newStintCompound ?? "";
   const observed = observedMaxTyreAge[compound] ?? 0;
@@ -96,19 +124,16 @@ export default function DecisionPanel({
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-3">
-        <label className="flex items-center gap-3">
-          <span className="font-mono text-micro text-ink/60">LAP</span>
-          <input
-            type="range"
-            min={first}
-            max={last}
-            value={previewLap}
-            onChange={(e) => onPreviewLap(Number(e.target.value))}
-            className="h-1 w-56 cursor-pointer appearance-none rounded-none bg-rule accent-ink"
-            aria-label={`Pit lap for ${driver}, between ${first} and ${last}`}
-          />
-          <output className="w-8 font-mono text-sm">{previewLap}</output>
-        </label>
+        {/* The range input is gone (Phase 6.3). The control is the pit-stop tick
+            on the alternate stint bar above, which means "move the decision"
+            rather than "configure a parameter" — and because the bar shares the
+            chart's lap axis, dragging left is literally moving the stop earlier
+            in time. The lap readout stays, because the tick is a mark on an axis
+            and a mark cannot state its own value. */}
+        <p className="flex items-baseline gap-2 font-mono text-micro text-ink/60">
+          LAP <output className="text-sm text-ink">{previewLap}</output>
+          <span className="text-ink/45">drag the tick above, or focus it and use arrow keys</span>
+        </p>
 
         <button
           onClick={() => onPreviewLap(originalLap)}

@@ -519,8 +519,8 @@ def fit_race_parameters(
     )
 
 
-def tyre_model_digest(params: RaceParameters) -> str:
-    """A short stable digest of every driver/compound degradation cell.
+def driver_params_digest(params: RaceParameters) -> str:
+    """A short stable digest of every per-driver fitted quantity.
 
     The generated fixtures carry a `paramFingerprint` so that a refit fails a
     test instead of quietly leaving stale numbers in the UI (Rule 3). That
@@ -529,6 +529,15 @@ def tyre_model_digest(params: RaceParameters) -> str:
     when the degradation fallback chain was corrected, every fixture in the
     catalogue became stale and no fingerprint test could have noticed: the change
     that mattered most was the one the guard did not cover.
+
+    Covers the compound offsets, degradation slopes and cliffs — and also
+    `base_pace_s` and `pace_std_s`, which live on `DriverParams` rather than on
+    `TyreModel` and were missed by the first version of this digest. Both move
+    whenever the degradation fit moves, since all three come out of the same
+    pass-2 regression, so a digest over the tyre models alone could still have
+    let a driver's base pace drift silently. `pace_std_s` matters twice over: it
+    is the scale of the ensemble's pace noise, so it sets the width of every
+    band the UI draws.
 
     Hashed rather than enumerated because there are ~40 cells per race and the
     fingerprint is stored on all 103 files. Rounded before hashing so
@@ -540,6 +549,7 @@ def tyre_model_digest(params: RaceParameters) -> str:
     parts: list[str] = []
     for driver in sorted(params.drivers):
         dp = params.drivers[driver]
+        parts.append(f"{driver}|pace|{dp.base_pace_s:.5f}|{dp.pace_std_s:.5f}")
         for compound in sorted(dp.tyre_models, key=lambda c: c.value):
             m = dp.tyre_models[compound]
             parts.append(

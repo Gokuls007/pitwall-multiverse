@@ -125,7 +125,7 @@ from pitwall.ingestion.catalogue import CATALOGUE, get_entry  # noqa: E402
 from pitwall.ingestion.loader import load_race  # noqa: E402
 from pitwall.parameters.fit_all import (  # noqa: E402
     fit_catalogue_with_pooled_dirty_air,
-    tyre_model_digest,
+    driver_params_digest,
 )
 from pitwall.simulation.lap_time import AR1_PHI  # noqa: E402
 from pitwall.simulation.position import MIN_FOLLOWING_GAP_S  # noqa: E402
@@ -590,10 +590,12 @@ def build_race(race_key: str, workers: int) -> dict:
         "overtakeDifficulty": round(params.overtake_difficulty, 6),
         "dirtyAirMaxPenaltyS": round(params.dirty_air.max_penalty_s, 6),
         "dirtyAirDecayScaleS": round(params.dirty_air.decay_scale_s, 6),
-        # Covers every driver/compound degradation cell. Added after correcting
-        # the degradation fallback chain invalidated all 103 files without any
-        # fingerprint test being able to notice.
-        "tyreModelDigest": tyre_model_digest(params),
+        # Covers every per-driver fitted quantity: base pace, pace sigma, and
+        # each compound's offset, slope and cliff. Added after correcting the
+        # degradation fallback chain invalidated all 103 files without any
+        # fingerprint test being able to notice, then widened past the tyre
+        # models when base_pace_s turned out to still be uncovered.
+        "driverParamsDigest": driver_params_digest(params),
     }
 
     real_finish = {d.code: d.finish_position for d in snapshot.drivers}

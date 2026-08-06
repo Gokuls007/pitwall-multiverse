@@ -57,7 +57,8 @@ export default function Classification({ rows, focusDriver, nRuns }: Classificat
       <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
         <h2 className="label-caps">Classification — real vs alternate</h2>
         <p className="font-mono text-micro text-ink/60">
-          alternate = spread across {nRuns} runs, not one order
+          alternate = spread of <em className="not-italic text-ink/75">outcomes</em> across {nRuns}{" "}
+          runs, not one order
         </p>
       </div>
 

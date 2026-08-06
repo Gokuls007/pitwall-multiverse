@@ -19,9 +19,12 @@
  * is nothing left to label as uncommitted.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Classification, { type ClassificationRow } from "./components/Classification";
-import DecisionPanel, { type Candidate as PanelCandidate } from "./components/DecisionPanel";
+import DecisionPanel, {
+  previewSentence,
+  type Candidate as PanelCandidate,
+} from "./components/DecisionPanel";
 import GapChart, { type GapPoint } from "./components/GapChart";
 import LapAxisPanes from "./components/LapAxisPanes";
 import StrategyTimeline, { type StintRun } from "./components/StrategyTimeline";
@@ -171,9 +174,22 @@ export default function App() {
     setPreviewLap(pickOpeningCandidate(stopCandidates)?.newLap ?? null);
   }, [stopCandidates]);
 
+  /**
+   * Candidates keyed by lap. `pointermove` fires at pointer frequency and every
+   * event is a lookup plus a full redraw, so the lookup is a Map rather than a
+   * linear scan over ~130 candidates (spec 6.3).
+   */
+  const candidatesByLap = useMemo(
+    () => new Map(stopCandidates.map((c) => [c.newLap, c])),
+    [stopCandidates],
+  );
+
+  /** Sorted valid laps — the drag snaps to these, not to any integer. */
+  const validLaps = useMemo(() => stopCandidates.map((c) => c.newLap), [stopCandidates]);
+
   const selected: Candidate | null = useMemo(
-    () => stopCandidates.find((c) => c.newLap === previewLap) ?? null,
-    [stopCandidates, previewLap],
+    () => (previewLap == null ? null : candidatesByLap.get(previewLap) ?? null),
+    [candidatesByLap, previewLap],
   );
 
   const realSeries = useMemo<Record<string, GapPoint[]>>(() => {
@@ -268,13 +284,28 @@ export default function App() {
   const totalLaps = base?.meta.totalLaps ?? fixture?.meta.totalLaps ?? 1;
   const divergenceLap = selected?.divergenceLap ?? null;
 
-  const lapRange = useMemo<[number, number]>(
-    () =>
+  /**
+   * Hold the lap window still for the duration of a drag.
+   *
+   * Found by dragging it: the window is derived from the divergence lap, so every
+   * step recomputed the x-scale, the whole plot shifted sideways, and the grip
+   * slid out from under the pointer. Moving the stop 8 laps left moved the
+   * content further than the cursor. Freezing the window is what makes the drag
+   * feel like moving a mark along an axis rather than like the axis reacting to
+   * you; the window catches up on release.
+   */
+  const [isDragging, setIsDragging] = useState(false);
+  const frozenRange = useRef<[number, number] | null>(null);
+
+  const lapRange = useMemo<[number, number]>(() => {
+    if (isDragging && frozenRange.current) return frozenRange.current;
+    const range: [number, number] =
       mode === "focus" && !wholeRace && divergenceLap != null
         ? [Math.max(1, divergenceLap - FOCUS_LEAD_IN_LAPS), totalLaps]
-        : [1, totalLaps],
-    [mode, wholeRace, divergenceLap, totalLaps],
-  );
+        : [1, totalLaps];
+    frozenRange.current = range;
+    return range;
+  }, [mode, wholeRace, divergenceLap, totalLaps, isDragging]);
 
   const deltaSeries = useMemo(() => (selected ? toDeltaPoints(selected) : undefined), [selected]);
   const replayErrorSeries = useMemo(
@@ -350,6 +381,47 @@ export default function App() {
       ),
     [selected],
   );
+
+  /**
+   * Phase 6.3: the pit stop is the control.
+   *
+   * The handle goes on the alternate row (index 1 in focus mode), at the lap the
+   * moved stop currently sits on. `valueText` carries the teaching sentence
+   * rather than the number, so a screen reader dragging this hears the
+   * consequence of the decision.
+   */
+  const pitDrag = useMemo(() => {
+    if (mode !== "focus" || selected == null || stopLap == null || validLaps.length === 0) {
+      return undefined;
+    }
+    // The bar draws its boundary at the start of the stint the stop *creates* —
+    // the lap after the in-lap. The handle is drawn there so the grip is on the
+    // mark it moves, while the value it reports stays the in-lap.
+    const created = selected.stints.find((run) => run.startLap > selected.newLap);
+    return {
+      rowIndex: 1,
+      lap: selected.newLap,
+      tickLap: created?.startLap ?? selected.newLap,
+      realLap: stopLap + (created ? created.startLap - selected.newLap : 0),
+      validLaps,
+      valueText: previewSentence(
+        {
+          newLap: selected.newLap,
+          isReal: selected.isReal,
+          newStintCompound: selected.newStintCompound,
+          newStintLaps: selected.newStintLaps,
+          newStintEndTyreAge: selected.newStintEndTyreAge,
+          beyondEvidenceLaps: selected.extrapolatedLaps,
+          maxExcessLaps: selected.maxExcessLaps,
+        },
+        driver,
+        fixture?.meta.observedMaxTyreAge ?? {},
+      ),
+      label: `${driver} pit lap, ${validLaps[0]} to ${validLaps[validLaps.length - 1]}`,
+      onChange: setPreviewLap,
+      onDragStateChange: setIsDragging,
+    };
+  }, [mode, selected, stopLap, validLaps, driver, fixture]);
 
   const nSeeds = fixture?.meta.nSeeds ?? 0;
   const excluded = base?.meta.excludedFromGate ?? null;
@@ -488,6 +560,7 @@ export default function App() {
               rows={strategyRows}
               hoverLap={hoverLap}
               onHoverLap={setHoverLap}
+              pitDrag={pitDrag}
             />
           </>
         )}
@@ -510,7 +583,18 @@ export default function App() {
           {beyondEvidence.compound} stint {beyondEvidence.extrapolatedLaps === 1 ? "runs" : "run"}{" "}
           beyond any tyre age {driver} actually reached on that compound (max observed{" "}
           {fixture.meta.observedMaxTyreAge[beyondEvidence.compound] ?? 0} laps, this stint reaches{" "}
-          {beyondEvidence.endTyreAge}) — extrapolation, not interpolation.
+          {beyondEvidence.endTyreAge}) — extrapolation, not interpolation.{" "}
+          {/* A third risk category that neither `extrapolatedLaps` nor
+              `fitProvenance` covers: out here the FUNCTIONAL FORM is untested. A
+              cliff is only detectable inside the observed range, so "no cliff
+              past it" is the absence of a finding rather than a finding. Stated
+              explicitly, because the hatch on its own reads as "less certain"
+              when the actual claim is "structurally linear by default". */}
+          <span className="text-ink/60">
+            Out there the curve is a straight line because nothing in {driver}&apos;s data could
+            have told it otherwise — a cliff can only be detected inside the range he ran, so its
+            absence here is not evidence of its absence.
+          </span>
         </p>
       )}
 

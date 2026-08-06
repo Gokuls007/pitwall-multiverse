@@ -3425,3 +3425,102 @@ separable at all (it is literally `is_identified`). So the drivers whose tyre
 models are best identified are exactly the drivers whose counterfactuals are
 defensible, and VER at Hungary fails both tests for one reason. Queued for the
 README in Phase 8.
+
+### 2026-08-06 — Phase 6.3: the pit stop is the control
+
+The slider is gone. The pit-stop tick on the alternate stint bar is now the
+thing you move, which converts "configure a parameter" into "move the decision"
+— and because the bar shares the chart's lap axis, dragging left is literally
+moving the stop earlier in time.
+
+**One feel defect, found only by dragging it, and it was the whole difference
+between working and feeling right.** The lap window is derived from the
+divergence lap, so every step of the drag recomputed the x-scale: the plot
+expanded sideways, and the grip slid out from under the pointer. Concretely, the
+same 131px drag moved the stop 8 laps (47 -> 39) because the scale kept
+stretching under the cursor, so the content moved further than the hand did. It
+read as the chart fighting back.
+
+Freezing the lap window for the duration of the drag fixes it. The identical
+131px gesture now moves 47 -> 42, which is exactly what the visible scale says it
+should, and the window catches up on release. The events fired correctly in both
+versions; only one of them felt like moving a mark along an axis.
+
+**Steps move by candidate, not by integer lap.** The discovered valid range has
+holes — a candidate that would push a stint past the following real stop is
+refused — so arrow keys and pointer snapping both walk the sorted candidate
+array. Stepping by integer would let the handle land on a lap with no ensemble
+behind it and blank the chart. Asserted by walking twelve steps and checking the
+preview sentence still renders each time.
+
+**An off-by-one worth recording because it would have been felt, not seen.** The
+decision's value is the in-lap; the boundary the bar draws is the out-lap, one
+later. Drawing the handle at the value would have put the grip one lap away from
+the mark it moves, for the whole drag. `PitDrag` carries `lap` and `tickLap`
+separately and the pointer mapping shifts between the two coordinate systems.
+
+**Details that carry the frame.** A persistent dashed notch labelled `real` at
+the real pit lap, visible throughout the drag including when the tick is dragged
+far from it — the zero-extrapolation point, always on screen. `cursor: ew-resize`
+over a 44px invisible hit area. `setPointerCapture` on pointerdown so the drag
+survives leaving the element, with `onLostPointerCapture` also ending the drag,
+because a capture lost to a window blur without a pointerup would otherwise leave
+the geometry frozen permanently.
+
+**Keyboard, verified in the browser rather than only in jsdom:** `role="slider"`,
+`tabindex=0`, arrows ±1 candidate, Shift+arrow ±5, Home/End to the bounds, and
+`aria-valuetext` reading *"Lap 42: a 27-lap stint on mediums, reaching tyre age
+27 — within the 34 laps HAM actually ran on that compound."* A screen reader gets
+the consequence, not the coordinate.
+
+**No animation during drag,** verified by measurement rather than assertion:
+zero SVG elements in the rendered page have a non-zero `transition-duration`, so
+the `prefers-reduced-motion` requirement is satisfied by construction rather than
+by a media query that could rot.
+
+Candidates are keyed in a `Map` and the valid laps in a sorted array, per the
+spec — ~130 candidates scanned linearly on every `pointermove` would be a
+lookup plus a full redraw of chart, bars, hatch, sentence and distribution.
+
+#### Three review notes folded in
+
+**The band and the classification have different variance structures, and the
+labels now say so.** Common random numbers cancel the shared noise in the
+*difference*, so the band is a confidence interval on the decision effect and is
+correctly tight (1.29s). The classification distribution comes from absolute
+outcomes and still carries full unpaired variance. A 1.29s effect band beside a
+wide win-probability spread is not a contradiction, but it reads as one, so the
+legend says "median and p10–p90 of 60 **paired** runs" and the classification
+says "spread of **outcomes**".
+
+**A third risk category neither flag covered.** `extrapolatedLaps` measures
+distance past observed tyre age; `fitProvenance` measures fit quality. Neither
+says the *functional form* is untested out there. A cliff can only be detected
+inside the observed range, so "no cliff detected" past it is the absence of a
+finding, not a finding — and for a soft stint at Hungary, where nothing exceeded
+6 laps, age 45 is precisely where a cliff would live. The caution copy now says
+it: the curve is a straight line out there because nothing in that driver's data
+could have told it otherwise.
+
+**The fingerprint still had a hole.** `driverParamsDigest` (renamed from
+`tyreModelDigest`) now also covers `base_pace_s` and `pace_std_s`, which live on
+`DriverParams` rather than `TyreModel`. The compound offsets were already in it,
+but base pace was not — and all three come out of the same pass-2 regression, so
+a digest over the tyre models alone could still have let base pace drift
+silently. `pace_std_s` matters twice over: it is the scale of the ensemble's pace
+noise, so it sets the width of every band the UI draws.
+
+#### Not done, deliberately
+
+The non-monotonic catalogue slope ordering (MEDIUM 0.054 > SOFT 0.050) is very
+likely range selection — each compound's slope is fitted over a different age
+window, softs on 0–6 and mediums on 0–30, so with a convex true curve the
+compound with the longer window picks up more curvature. The consequence is that
+the residual bias points the same way as the flat-zero bug just fixed: VER
+67->40's remaining -16.2s still applies a soft slope fitted on ages 0–6 out to
+age 45, and is probably still too shallow. The test that would settle it — refit
+each compound restricted to ages 0–6, the window where all three have data, and
+see whether the ordering becomes monotonic — is queued as README material for
+Phase 8, not as a fix.
+
+`meta`-hoisting of per-candidate constants (~9% of payload) still not done.

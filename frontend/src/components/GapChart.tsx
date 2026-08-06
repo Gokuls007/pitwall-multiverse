@@ -376,7 +376,7 @@ export default function GapChart({
               </svg>
               decision effect{" "}
               <span className="text-ink/45">
-                median of {nRuns ?? seedSeries?.length ?? 0} runs
+                median and p10–p90 of {nRuns ?? seedSeries?.length ?? 0} paired runs
               </span>
             </span>
             {replayErrorSeries && replayErrorSeries.length > 0 && (

@@ -64,7 +64,7 @@ def live_fingerprints() -> dict[str, dict]:
     from pitwall.ingestion.loader import load_race
     from pitwall.parameters.fit_all import (
         fit_catalogue_with_pooled_dirty_air,
-        tyre_model_digest,
+        driver_params_digest,
     )
 
     race_keys = sorted({path.name.split("__")[0] for path in _race_files()})
@@ -80,7 +80,7 @@ def live_fingerprints() -> dict[str, dict]:
             "overtakeDifficulty": round(params.overtake_difficulty, 6),
             "dirtyAirMaxPenaltyS": round(params.dirty_air.max_penalty_s, 6),
             "dirtyAirDecayScaleS": round(params.dirty_air.decay_scale_s, 6),
-            "tyreModelDigest": tyre_model_digest(params),
+            "driverParamsDigest": driver_params_digest(params),
         }
     return result
 

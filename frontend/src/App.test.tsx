@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
@@ -126,8 +126,11 @@ describe("App", () => {
     await userEvent.selectOptions(screen.getByLabelText(/^driver$/i), "VER");
     await waitFor(() => expect(screen.getByLabelText(/stop to move/i)).toBeInTheDocument());
     await userEvent.selectOptions(screen.getByLabelText(/stop to move/i), "67");
-    await waitFor(() => expect(screen.getByRole("slider")).toBeInTheDocument());
-    fireEvent.change(screen.getByRole("slider"), { target: { value: "1" } });
+    // Phase 6.3 retired the range input; the control is the pit tick, driven
+    // here by keyboard because jsdom has no real pointer geometry.
+    await waitFor(() => expect(screen.getByTestId("pit-tick")).toBeInTheDocument());
+    screen.getByTestId("pit-tick").focus();
+    await userEvent.keyboard("{Home}");
 
     await waitFor(() =>
       expect(screen.getByText(/past this race's plausibility bound/i)).toBeInTheDocument(),
@@ -150,12 +153,10 @@ describe("App", () => {
     await waitFor(() => expect(screen.getByText(/instead of lap/i)).toBeInTheDocument());
     const before = fetchSpy.mock.calls.length;
 
-    // Drive the slider by value rather than by keystroke: the assertion is
-    // about where the ensemble comes from, not about range-input key handling.
-    const slider = screen.getByRole("slider") as HTMLInputElement;
     const shown = () => screen.getByText(/pits on lap \d+/).textContent ?? "";
     const first = shown();
-    fireEvent.change(slider, { target: { value: slider.min } });
+    screen.getByTestId("pit-tick").focus();
+    await userEvent.keyboard("{ArrowLeft}");
 
     await waitFor(() => expect(shown()).not.toBe(first));
     // The whole decision space came in the driver's single file, so changing
@@ -181,5 +182,90 @@ describe("App", () => {
     await waitFor(() => expect(screen.getByText(/Monaco Grand Prix/)).toBeInTheDocument());
     // The caveat is stated in place; Monaco stays selectable.
     expect(screen.getByText(/Excluded from the Part 8.3 gate aggregate/)).toBeInTheDocument();
+  });
+});
+
+describe("the pit stop as the control (Phase 6.3)", () => {
+  it("exposes the tick as a slider carrying the teaching sentence, not a number", async () => {
+    // The spec requires `aria-valuetext` to be the preview sentence: a screen
+    // reader dragging this should hear the consequence of the decision, not the
+    // coordinate it landed on.
+    render(<App />);
+    await waitFor(() => expect(screen.getByTestId("pit-tick")).toBeInTheDocument());
+
+    const tick = screen.getByTestId("pit-tick");
+    expect(tick).toHaveAttribute("role", "slider");
+    expect(tick).toHaveAttribute("tabindex", "0");
+    const valueText = tick.getAttribute("aria-valuetext") ?? "";
+    expect(valueText).toMatch(/lap \d+/i);
+    expect(valueText).toMatch(/stint on/i);
+    // Bounds come from the discovered valid range, not from 1..totalLaps.
+    expect(Number(tick.getAttribute("aria-valuemin"))).toBeGreaterThanOrEqual(1);
+    expect(Number(tick.getAttribute("aria-valuenow"))).toBeGreaterThan(0);
+  });
+
+  it("steps by candidate, and Home/End reach the range bounds", async () => {
+    render(<App />);
+    await waitFor(() => expect(screen.getByTestId("pit-tick")).toBeInTheDocument());
+    const now = () => Number(screen.getByTestId("pit-tick").getAttribute("aria-valuenow"));
+    const min = Number(screen.getByTestId("pit-tick").getAttribute("aria-valuemin"));
+    const max = Number(screen.getByTestId("pit-tick").getAttribute("aria-valuemax"));
+
+    screen.getByTestId("pit-tick").focus();
+    const start = now();
+    await userEvent.keyboard("{ArrowLeft}");
+    await waitFor(() => expect(now()).toBeLessThan(start));
+
+    await userEvent.keyboard("{End}");
+    await waitFor(() => expect(now()).toBe(max));
+    await userEvent.keyboard("{Home}");
+    await waitFor(() => expect(now()).toBe(min));
+
+    // Shift steps five candidates, not one.
+    const atMin = now();
+    await userEvent.keyboard("{Shift>}{ArrowRight}{/Shift}");
+    await waitFor(() => expect(now()).toBeGreaterThan(atMin));
+    const afterShift = now();
+    await userEvent.keyboard("{Home}");
+    await userEvent.keyboard("{ArrowRight}");
+    await waitFor(() => expect(now()).toBeLessThan(afterShift));
+  });
+
+  it("never lands on a lap with no precomputed ensemble behind it", async () => {
+    // The discovered valid range has holes — a candidate that would push a stint
+    // past the following real stop is refused — so stepping must move by
+    // candidate rather than by integer lap. If it stepped by integer, the handle
+    // could sit on a lap with nothing to render and the chart would blank.
+    render(<App />);
+    await waitFor(() => expect(screen.getByTestId("pit-tick")).toBeInTheDocument());
+    screen.getByTestId("pit-tick").focus();
+
+    for (let i = 0; i < 12; i += 1) {
+      await userEvent.keyboard("{ArrowLeft}");
+      // The preview sentence only renders from a loaded candidate, so its
+      // presence is the assertion that the lap resolved to one.
+      expect(screen.getByText(/pits on lap \d+/)).toBeInTheDocument();
+    }
+  });
+
+  it("keeps the real-lap marker visible even when the tick is dragged far away", async () => {
+    render(<App />);
+    await waitFor(() => expect(screen.getByTestId("pit-tick")).toBeInTheDocument());
+    screen.getByTestId("pit-tick").focus();
+    await userEvent.keyboard("{Home}");
+
+    // The zero-extrapolation point must stay on screen throughout: it is where
+    // the user departed from the evidence.
+    const timeline = screen.getByLabelText(/stint and compound timeline/i);
+    const marks = [...timeline.querySelectorAll("text")].map((t) => t.textContent);
+    expect(marks).toContain("real");
+  });
+
+  it("has retired the range input", async () => {
+    render(<App />);
+    await waitFor(() => expect(screen.getByTestId("pit-tick")).toBeInTheDocument());
+    expect(document.querySelector('input[type="range"]')).toBeNull();
+    // RESET TO REAL is explicitly retained.
+    expect(screen.getByRole("button", { name: /reset to real/i })).toBeInTheDocument();
   });
 });
