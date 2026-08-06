@@ -269,3 +269,107 @@ describe("the pit stop as the control (Phase 6.3)", () => {
     expect(screen.getByRole("button", { name: /reset to real/i })).toBeInTheDocument();
   });
 });
+
+describe("lap scrubbing under prefers-reduced-motion", () => {
+  // Playback must be absent, not present-and-inert: an auto-advancing playhead is
+  // exactly the unrequested motion the setting exists to refuse. The playhead
+  // itself stays fully usable by drag and keyboard.
+  beforeEach(() => {
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: query.includes("prefers-reduced-motion"),
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      onchange: null,
+      dispatchEvent: () => false,
+    }));
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("removes the play control but keeps the playhead operable", async () => {
+    render(<App />);
+    await waitFor(() => expect(screen.getByTestId("playhead")).toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: /^play$/i })).not.toBeInTheDocument();
+
+    screen.getByTestId("playhead").focus();
+    await userEvent.keyboard("{Home}");
+    await waitFor(() => expect(screen.getByText(/order on lap/i)).toBeInTheDocument());
+  });
+});
+
+describe("lap scrubbing (Phase 6.4)", () => {
+  it("parks on the whole race until scrubbed, then reads an order off stored state", async () => {
+    render(<App />);
+    await waitFor(() => expect(screen.getByTestId("playhead")).toBeInTheDocument());
+
+    // Parked: the finish-order distribution is shown, not a single lap's order.
+    expect(screen.getByText(/real vs alternate/i)).toBeInTheDocument();
+    expect(screen.queryByText(/^Order on lap/i)).not.toBeInTheDocument();
+
+    screen.getByTestId("playhead").focus();
+    await userEvent.keyboard("{Home}");
+    await waitFor(() => expect(screen.getByText(/order on lap/i)).toBeInTheDocument());
+
+    // The order is a plain list of positions at that lap, and the caption says
+    // where it came from — the whole point of 6.4 is that it isn't interpolated.
+    expect(screen.getByText(/read from the lap record/i)).toBeInTheDocument();
+    // Full field, so it is the real order rather than a partial reconstruction.
+    const items = screen.getAllByRole("listitem");
+    expect(items.length).toBeGreaterThanOrEqual(19);
+  });
+
+  it("does not invent an alternate order for drivers whose positions aren't stored", async () => {
+    // Only the focus driver's alternate position exists. Substituting it into the
+    // real order would put two cars in one place, so the alternate is reported as
+    // a displacement and the caveat is stated in the UI rather than assumed.
+    render(<App />);
+    await waitFor(() => expect(screen.getByTestId("playhead")).toBeInTheDocument());
+    screen.getByTestId("playhead").focus();
+    await userEvent.keyboard("{End}");
+    await waitFor(() => expect(screen.getByText(/order on lap/i)).toBeInTheDocument());
+
+    expect(screen.getByText(/only this driver's alternate position is stored/i)).toBeInTheDocument();
+  });
+
+  it("keyboard-operates on the same conventions as the pit drag", async () => {
+    render(<App />);
+    await waitFor(() => expect(screen.getByTestId("playhead")).toBeInTheDocument());
+    const head = screen.getByTestId("playhead");
+    const now = () => Number(head.getAttribute("aria-valuenow"));
+    const min = Number(head.getAttribute("aria-valuemin"));
+    const max = Number(head.getAttribute("aria-valuemax"));
+
+    head.focus();
+    await userEvent.keyboard("{Home}");
+    await waitFor(() => expect(now()).toBe(min));
+    await userEvent.keyboard("{ArrowRight}");
+    await waitFor(() => expect(now()).toBe(min + 1));
+    await userEvent.keyboard("{Shift>}{ArrowRight}{/Shift}");
+    await waitFor(() => expect(now()).toBe(min + 6));
+    await userEvent.keyboard("{End}");
+    await waitFor(() => expect(now()).toBe(max));
+  });
+
+  it("resets when the thing it is scrubbing changes", async () => {
+    // "The order on lap 47" of a race that is no longer loaded is not a fact
+    // about anything, so the playhead parks on any change of race/driver/stop.
+    render(<App />);
+    await waitFor(() => expect(screen.getByTestId("playhead")).toBeInTheDocument());
+    screen.getByTestId("playhead").focus();
+    await userEvent.keyboard("{Home}");
+    await waitFor(() => expect(screen.getByText(/order on lap/i)).toBeInTheDocument());
+
+    await userEvent.selectOptions(screen.getByLabelText(/^driver$/i), "VER");
+    await waitFor(() => expect(screen.queryByText(/order on lap/i)).not.toBeInTheDocument());
+  });
+
+  it("offers playback, and hides it entirely under prefers-reduced-motion", async () => {
+    render(<App />);
+    await waitFor(() => expect(screen.getByTestId("playhead")).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: /^play$/i })).toBeInTheDocument();
+  });
+});

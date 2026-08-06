@@ -3524,3 +3524,99 @@ see whether the ordering becomes monotonic — is queued as README material for
 Phase 8, not as a fix.
 
 `meta`-hoisting of per-candidate constants (~9% of payload) still not done.
+
+### 2026-08-06 — Phase 6.4: lap scrubbing, and Phase 9 dropped
+
+**Phase 9 is dropped from the sequence, and my own amendment was the problem.**
+The v2.1 integration part I wrote inserted catalogue expansion to 2023-24 before
+6.4. That conflicts with two things I had already written down: v2 Part 2 rules
+out adding races (each needs the full disqualifier screen, fitting and validation
+loop), and spec 6.6 says not to pool dirty air across regulation eras. The
+current dirty-air curve is a single pooled fit over a catalogue that is entirely
+2019-2021; adding 2023-24 either contaminates that pool or forces a per-era fit,
+which halves the sample that made it identifiable. The amendment never reconciled
+against 6.6. Sequence is now 6.4 -> 6.5 -> 7 -> 8, with coverage as a possible v3.
+
+**6.3's two loose ends, closed.**
+
+*The frozen lap window was a wall.* Freezing it stopped the scale shifting under
+the cursor, but if the handle reached the window edge it simply stopped while the
+pointer kept going — worse than the problem it fixed, and guaranteed to happen,
+because a stop's valid range is often the whole race (HAM's lap-48 stop accepts
+laps 1-70). The window now pans to follow the handle within three laps of either
+edge, keeping its width. Stable in the middle, never walled at the ends.
+
+*"Steps by candidate" needed to be visible.* The valid range has holes, so the
+handle skips laps, which reads as dropped frames. There is now a rail under the
+draggable row: grey for the span, oxide for contiguous runs of laps that actually
+have an ensemble. The gaps explain the skips, and the reachable range is legible
+before you grab anything.
+
+**6.4: the playhead.** Draggable and keyboard-operable on 6.3's conventions
+(arrows +/-1, Shift +/-5, Home/End, plus space to play), both panes revealing
+progressively, and the classification replaced by the order at that lap.
+
+**The spec said 6.4 "needs no new data — per-lap positions for every seed already
+exist." True of the engine, false of the fixtures.** `LapState.position` exists
+for all 485,100 simulations, but the precompute never stored it, and the whole
+point of 6.4 is that position is *read* rather than interpolated. So candidates
+now carry `positions` (median, best, worst across seeds, aligned to the delta
+laps) and base files carry `realPositions` for the field.
+
+**Reality's order, not a synthesised alternate one.** Only the focus driver's
+alternate position is stored. Substituting it into the real order would put two
+cars in P3 and leave a hole elsewhere — an order the model never produced. So the
+panel states the real order at that lap, reports the focus driver's alternate
+position as a displacement from it, and says in the UI why the rest is
+reality's.
+
+**Two bugs found only by looking at it.**
+
+*The comparison changed lap halfway through its own sentence.* The panel read
+"HAM is P2 on this lap against P1 in reality" while the list directly above
+showed him second on that lap. `realPosition` on a classification row is the
+*finishing* position, and HAM won that race. Now read off the same order shown
+above; at lap 70 it correctly reads "P1 on this lap — the same place he was in
+reality."
+
+*Position 0 is not a position.* A range assertion on the generated files caught
+three entries: 2019 Australian GRO L30, SAI L10, and 2021 Spanish TSU L7. All
+three are retirement laps — the car stops part-way round, so there is no lap time
+and no classified place, and FastF1 writes 0 as a sentinel. Emitting it would sort
+that driver to the *front* of the order, so the playhead would have shown a
+retired car leading the race. Filtered at the source; a retired driver correctly
+just leaves the order.
+
+**Playback is absent under `prefers-reduced-motion`, not disabled.** The control
+is not rendered at all, and the playhead stays fully usable by drag and keyboard.
+An auto-advancing playhead is precisely the unrequested motion that setting exists
+to refuse, and a greyed-out button still advertises something the user has said
+they don't want.
+
+**Reveal clips the drawing, never the scale.** The y-range is computed over the
+whole visible window rather than over the revealed prefix, so the axis does not
+rescale on every lap of playback. Same lesson as freezing the lap window during
+the pit drag: geometry that moves while something animates across it is
+unreadable.
+
+#### The payload, and the `meta`-hoisting finally done
+
+Adding positions pushed the largest file to 844KB, over the 650KB ceiling. Rather
+than raise it, measured per field and cut what was duplicated:
+
+| change | saved |
+|---|---|
+| dropped `clampedFraction` from every delta row — the only use was testing `> 0.5`, which is exactly what `clampLaps` records | 5.5% |
+| hoisted `tyreCells` and `plausibilityBoundS` into `meta`; they were per-driver constants repeated on ~140 candidates | 7.5% |
+| `positions` aligned to the delta laps instead of carrying their own lap column | 3.2% |
+| `deltaVsActual` as a flat number array rather than an array of 1-tuples | 3.5% |
+
+Result: max **844KB -> 615KB**, median **441KB -> 375KB**, and the catalogue total
+**34.6MB -> 33.6MB** — smaller than before the playhead data was added. Production
+build still emits 103 separate assets with a 199KB JS bundle.
+
+The remaining size is structural: it is O(candidates x laps x series), and each
+series answers a distinct question that was asked for. The identified lever, not
+taken here, is one file per *(driver, stop)* rather than per driver — the UI only
+ever shows one stop at a time, so a two-stop driver currently downloads twice what
+is displayed.

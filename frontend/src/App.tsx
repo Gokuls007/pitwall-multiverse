@@ -27,6 +27,7 @@ import DecisionPanel, {
 } from "./components/DecisionPanel";
 import GapChart, { type GapPoint } from "./components/GapChart";
 import LapAxisPanes from "./components/LapAxisPanes";
+import LapPlayhead from "./components/LapPlayhead";
 import StrategyTimeline, { type StintRun } from "./components/StrategyTimeline";
 import {
   availableDrivers,
@@ -34,6 +35,7 @@ import {
   loadDriverFixture,
   loadRaceBase,
   pickOpeningCandidate,
+  positionAtLap,
   toActualPoints,
   toDeltaPoints,
   toSeedPoints,
@@ -49,6 +51,13 @@ import {
  */
 const FOCUS_LEAD_IN_LAPS = 6;
 
+/**
+ * How close the drag handle may get to the edge of the frozen lap window before
+ * the window pans to follow it. Three laps is enough to see where you are going
+ * without the window sliding for most of a drag.
+ */
+const DRAG_EDGE_MARGIN_LAPS = 3;
+
 const RACES = availableRaces();
 
 /** "2019_hungarian" -> "2019 Hungarian" for the selector, before the file loads. */
@@ -61,6 +70,8 @@ export default function App() {
   const [mode, setMode] = useState<"field" | "focus">("focus");
   const [wholeRace, setWholeRace] = useState(false);
   const [hoverLap, setHoverLap] = useState<number | null>(null);
+  /** Phase 6.4: the playhead. `null` means parked, showing the whole race. */
+  const [playheadLap, setPlayheadLap] = useState<number | null>(null);
 
   // Hungary/VER is the demo case the whole project was built around, so it is
   // the default when present; otherwise fall back to whatever the catalogue has.
@@ -156,6 +167,13 @@ export default function App() {
     const pool = usable.length ? usable : stopLaps;
     setStopLap(pool[pool.length - 1]);
   }, [stopLaps, fixture]);
+
+  // A playhead lap only means something relative to a particular race, driver and
+  // decision; carrying it across a change would show "the order on lap 47" of a
+  // race that is no longer loaded.
+  useEffect(() => {
+    setPlayheadLap(null);
+  }, [raceKey, driver, stopLap]);
 
   const stopCandidates = useMemo(
     () =>
@@ -298,7 +316,27 @@ export default function App() {
   const frozenRange = useRef<[number, number] | null>(null);
 
   const lapRange = useMemo<[number, number]>(() => {
-    if (isDragging && frozenRange.current) return frozenRange.current;
+    if (isDragging && frozenRange.current) {
+      const [lo, hi] = frozenRange.current;
+      // Frozen, but not a wall. If the handle reaches the edge of the frozen
+      // window the window pans to follow it, keeping its width — otherwise
+      // dragging toward a lap outside the window would stop the handle while the
+      // pointer kept going, which is worse than the rescaling it replaced. The
+      // valid range for a stop is often the entire race (HAM's lap-48 stop
+      // accepts laps 1-70), so a tight window that cannot pan is guaranteed to
+      // hit this.
+      const handle = divergenceLap ?? lo;
+      const width = hi - lo;
+      if (handle < lo + DRAG_EDGE_MARGIN_LAPS) {
+        const newLo = Math.max(1, handle - DRAG_EDGE_MARGIN_LAPS);
+        return [newLo, Math.min(totalLaps, newLo + width)];
+      }
+      if (handle > hi - DRAG_EDGE_MARGIN_LAPS) {
+        const newHi = Math.min(totalLaps, handle + DRAG_EDGE_MARGIN_LAPS);
+        return [Math.max(1, newHi - width), newHi];
+      }
+      return frozenRange.current;
+    }
     const range: [number, number] =
       mode === "focus" && !wholeRace && divergenceLap != null
         ? [Math.max(1, divergenceLap - FOCUS_LEAD_IN_LAPS), totalLaps]
@@ -373,14 +411,18 @@ export default function App() {
     [classificationRows, driver],
   );
 
-  /** Degradation cells this candidate leans on that are too thin to lean on. */
-  const degenerateCells = useMemo(
-    () =>
-      (selected?.fitProvenance ?? []).filter(
-        (cell) => cell.degenerate && cell.postForkLaps > 0,
-      ),
-    [selected],
-  );
+  /**
+   * Degradation cells this candidate leans on that are too thin to lean on.
+   * The cell statistics come from `meta.tyreCells` (per-driver constants) and the
+   * reliance from the candidate — joined here rather than stored per candidate.
+   */
+  const degenerateCells = useMemo(() => {
+    if (!selected || !fixture) return [];
+    return fixture.meta.tyreCells
+      .filter((cell) => cell.degenerate)
+      .map((cell) => ({ ...cell, postForkLaps: selected.fitReliance[cell.compound] ?? 0 }))
+      .filter((cell) => cell.postForkLaps > 0);
+  }, [selected, fixture]);
 
   /**
    * Phase 6.3: the pit stop is the control.
@@ -422,6 +464,38 @@ export default function App() {
       onDragStateChange: setIsDragging,
     };
   }, [mode, selected, stopLap, validLaps, driver, fixture]);
+
+  /** Pit stops on the playhead rail, so scrubbing has landmarks. */
+  const playheadMarks = useMemo(() => {
+    const marks: { lap: number; kind: "real" | "alternate" }[] = [];
+    for (const lap of fixture?.meta.realPitLaps ?? []) marks.push({ lap, kind: "real" });
+    if (selected && !selected.isReal) marks.push({ lap: selected.newLap, kind: "alternate" });
+    return marks;
+  }, [fixture, selected]);
+
+  /**
+   * The order at the playhead lap. Read from stored per-lap state on both sides —
+   * `base.realPositions` for the field, the candidate's `positions` for the focus
+   * driver's alternate. Nothing here is interpolated between laps, which is why
+   * the playhead only ever sits on an integer lap.
+   */
+  const orderAtPlayhead = useMemo(() => {
+    if (playheadLap == null || !base) return undefined;
+    const at: { code: string; position: number }[] = [];
+    for (const [code, series] of Object.entries(base.realPositions ?? {})) {
+      const entry = series.find(([lap]) => lap === playheadLap);
+      if (entry) at.push({ code, position: entry[1] });
+    }
+    at.sort((a, b) => a.position - b.position);
+
+    const alt = selected ? positionAtLap(selected, playheadLap) : null;
+    return {
+      lap: playheadLap,
+      realOrder: at.map((entry) => entry.code),
+      focusAlternatePosition: alt ? alt.median : null,
+      focusAlternateSpread: alt ? ([alt.best, alt.worst] as [number, number]) : null,
+    };
+  }, [playheadLap, base, selected]);
 
   const nSeeds = fixture?.meta.nSeeds ?? 0;
   const excluded = base?.meta.excludedFromGate ?? null;
@@ -539,6 +613,12 @@ export default function App() {
       <LapAxisPanes lapRange={lapRange}>
         {(axis) => (
           <>
+            <LapPlayhead
+              axis={axis}
+              lap={playheadLap}
+              onLap={setPlayheadLap}
+              markedLaps={playheadMarks}
+            />
             <GapChart
               axis={axis}
               realSeries={realSeries}
@@ -551,6 +631,7 @@ export default function App() {
               seedSeries={seedSeries}
               divergenceLap={divergenceLap ?? undefined}
               nRuns={nSeeds}
+              revealLap={playheadLap}
               safetyCarPeriods={base?.safetyCarPeriods ?? []}
               hoverLap={hoverLap}
               onHoverLap={setHoverLap}
@@ -561,6 +642,7 @@ export default function App() {
               hoverLap={hoverLap}
               onHoverLap={setHoverLap}
               pitDrag={pitDrag}
+              revealLap={playheadLap}
             />
           </>
         )}
@@ -670,7 +752,7 @@ export default function App() {
                   <p>
                     {Math.abs(selected.plausibility.finalDeltaS).toFixed(0)}s from one moved pit
                     stop is past this race&apos;s plausibility bound of{" "}
-                    {selected.plausibility.boundS.toFixed(0)}s (twice the fitted pit-lane loss).
+                    {fixture.meta.plausibilityBoundS.toFixed(0)}s (twice the fitted pit-lane loss).
                     Read it as a property of the model, not a strategy finding.
                   </p>
                 )}
@@ -738,7 +820,12 @@ export default function App() {
       )}
 
       {mode === "focus" && (
-        <Classification rows={classificationRows} focusDriver={driver} nRuns={nSeeds} />
+        <Classification
+          rows={classificationRows}
+          focusDriver={driver}
+          nRuns={nSeeds}
+          atLap={orderAtPlayhead}
+        />
       )}
 
       <footer className="rule-t mt-8 pt-3 font-mono text-micro text-ink/50">

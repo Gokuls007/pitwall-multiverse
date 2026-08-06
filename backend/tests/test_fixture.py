@@ -180,6 +180,7 @@ def test_no_driver_file_stores_per_seed_lap_state():
                 )
             # Same for the replay-error diagnostic.
             assert len(candidate["deltaVsActual"]) == n_laps, f"{path.name}: deltaVsActual misaligned"
+            assert len(candidate["positions"]) == n_laps, f"{path.name}: positions misaligned"
 
 
 def test_race_file_sizes_stay_within_the_stated_budget():
@@ -463,7 +464,7 @@ def test_the_reality_reproducing_candidate_has_exactly_zero_decision_effect():
             if not candidate["isReal"]:
                 continue
             checked += 1
-            for lap, median, low, high, _clamped in candidate["deltaVsSimulatedReal"]:
+            for lap, median, low, high in candidate["deltaVsSimulatedReal"]:
                 assert (median, low, high) == (0.0, 0.0, 0.0), (
                     f"{path.name} lap {lap}: reality-reproducing candidate has a "
                     f"non-zero decision effect {median}s -- the paired baseline is broken"
@@ -506,14 +507,13 @@ def test_every_implausible_answer_has_a_named_cause():
             # Every candidate carries the verdict, plausible or not.
             assert set(verdict) >= {
                 "finalDeltaS",
-                "boundS",
                 "implausible",
                 "trafficS",
                 "paceS",
                 "restsOnDegenerateFit",
                 "cause",
             }, f"{path.name}: incomplete plausibility verdict"
-            assert candidate["fitProvenance"], f"{path.name}: no fit provenance"
+            assert "fitReliance" in candidate, f"{path.name}: no fit reliance"
 
             if not verdict["implausible"]:
                 assert verdict["cause"] is None, f"{path.name}: plausible candidate has a cause"
@@ -553,3 +553,66 @@ def test_every_implausible_answer_has_a_named_cause():
         f"{len(unexplained)} of {total} candidates ({share:.2%}) are implausible with no "
         "identified cause, which is too many to wave through: " + "; ".join(unexplained[:10])
     )
+
+
+def test_every_driver_file_carries_its_per_driver_constants_once():
+    """The per-driver constants live in `meta`, not on all ~140 candidates.
+
+    `tyreCells` (observation count, r2, slope, cliff per compound) and the
+    plausibility bound are identical across every candidate a driver has.
+    Repeating them measured 7.5% of the payload for no information. Each candidate
+    keeps only `fitReliance` — how many post-fork laps *that* candidate runs on
+    each compound — which is the part that actually varies.
+
+    Asserted because the join is now the frontend's job, and a candidate naming a
+    compound absent from `meta.tyreCells` would silently lose its caveat.
+    """
+    files = _driver_files()
+    if not files:
+        pytest.skip("no per-driver fixtures; run scripts/build_fixtures.py")
+
+    for path in files:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        meta = payload["meta"]
+        assert meta["tyreCells"], f"{path.name}: no tyre cells in meta"
+        assert meta["plausibilityBoundS"] > 0, f"{path.name}: no plausibility bound"
+        known = {cell["compound"] for cell in meta["tyreCells"]}
+        for candidate in payload["candidates"]:
+            assert "tyreCells" not in candidate, f"{path.name}: cells still repeated per candidate"
+            assert "boundS" not in candidate["plausibility"], f"{path.name}: bound still repeated"
+            unknown = set(candidate["fitReliance"]) - known
+            assert not unknown, f"{path.name}: reliance on compounds missing from meta: {unknown}"
+
+
+def test_stored_per_lap_positions_are_present_and_ordered():
+    """Phase 6.4 reads the order at a lap; it never interpolates one.
+
+    That only works if position is stored per lap on both sides. The spec claimed
+    6.4 "needs no new data" because per-lap positions exist for every seed — true
+    of the engine's `LapState`, but the precompute never stored them, so they had
+    to be added. This asserts both halves are there and are sane.
+    """
+    driver_files, base_files = _driver_files(), _base_files()
+    if not driver_files:
+        pytest.skip("no per-driver fixtures; run scripts/build_fixtures.py")
+
+    for path in base_files:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        positions = payload["realPositions"]
+        assert len(positions) >= 15, f"{path.name}: only {len(positions)} drivers have positions"
+        for code, series in positions.items():
+            laps = [lap for lap, _ in series]
+            assert laps == sorted(laps), f"{path.name} {code}: laps out of order"
+            for _, position in series:
+                assert 1 <= position <= 26, f"{path.name} {code}: position {position}"
+
+    for path in driver_files:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        for candidate in payload["candidates"]:
+            for entry in candidate["positions"]:
+                if entry is None:
+                    continue
+                median, best, worst = entry
+                assert 1 <= best <= median <= worst <= 26, (
+                    f"{path.name}: position spread {entry} is not ordered best<=median<=worst"
+                )

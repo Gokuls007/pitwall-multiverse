@@ -35,8 +35,6 @@ export type StintRun = {
 export type FitCell = {
   compound: string;
   nObservations: number;
-  /** Post-fork laps this candidate actually runs on the compound. */
-  postForkLaps: number;
   rSquared?: number | null;
   linearDegSPerLap?: number;
   cliffLap?: number | null;
@@ -46,8 +44,6 @@ export type FitCell = {
 export type Plausibility = {
   finalDeltaS: number;
   sPerLap: number;
-  /** Twice the fitted pit-lane loss. Past it, the answer is an artifact. */
-  boundS: number;
   implausible: boolean;
   /** Of `finalDeltaS`, how much is accumulated held-up time versus pace. */
   trafficS: number;
@@ -71,16 +67,20 @@ export type Candidate = {
   /**
    * The decision effect: alternate minus the override-free fork at the same lap
    * with the same seed. Tuple array to keep the payload small —
-   * `[lap, median, p10, p90, clampedFraction]`.
+   * `[lap, median, p10, p90]`.
+   *
+   * No `clampedFraction` column: the only use any consumer had for it was testing
+   * `> 0.5`, which is exactly what `clampLaps` records. It was one of five numbers
+   * on every lap of every candidate, duplicating a field stored beside it.
    */
-  deltaVsSimulatedReal: [number, number, number, number, number][];
+  deltaVsSimulatedReal: [number, number, number, number][];
   /**
    * The same alternate against the *ingested* times, so it carries the
    * simulator's replay error as well as the decision's effect. A labelled
    * model-quality diagnostic, never the answer. Aligned index-for-index with
    * `deltaVsSimulatedReal` rather than repeating the lap column.
    */
-  deltaVsActual: [number | null][];
+  deltaVsActual: (number | null)[];
   /**
    * Three real trajectories of the decision effect, at the p10/p50/p90 of final
    * delta. `values` is aligned with `deltaVsSimulatedReal`. These exist because
@@ -89,8 +89,23 @@ export type Candidate = {
    * no seed occupied.
    */
   seedTraces: { seed: number; values: number[] }[];
+  /**
+   * Track position per lap for the focus driver in the alternate timeline, as
+   * `[medianPosition, bestAcrossSeeds, worstAcrossSeeds]`, or `null` on a lap he
+   * did not complete. Aligned index-for-index with `deltaVsSimulatedReal`.
+   *
+   * Stored rather than derived so the playhead can *read* an order rather than
+   * interpolate one — interpolating a position between laps would invent an
+   * ordering the model never produced.
+   */
+  positions: ([number, number, number] | null)[];
   plausibility: Plausibility;
-  fitProvenance: FitCell[];
+  /**
+   * Post-fork laps this candidate runs on each compound. The cell *statistics*
+   * are per-driver constants and live once in `meta.tyreCells`; only the reliance
+   * varies per candidate.
+   */
+  fitReliance: Record<string, number>;
   classification: Record<string, Record<string, number>>;
   clampLaps: number[];
   extrapolatedLaps: number;
@@ -113,6 +128,10 @@ export type DriverFixture = {
     realFinishPosition: number | null;
     realPitLaps: number[];
     observedMaxTyreAge: Record<string, number>;
+    /** This driver's degradation cells, once rather than on every candidate. */
+    tyreCells: FitCell[];
+    /** Twice the fitted pit-lane loss. Past it, an answer is an artifact. */
+    plausibilityBoundS: number;
     /** Non-null only for races excluded from the Part 8.3 gate aggregate. */
     excludedFromGate: string | null;
     paramFingerprint: Record<string, number>;
@@ -192,6 +211,8 @@ export type RaceBase = {
   }[];
   /** driver -> [[lap, gapToLeader], ...] */
   realSeries: Record<string, [number, number][]>;
+  /** driver -> [[lap, position], ...], straight off the ingested lap records. */
+  realPositions: Record<string, [number, number][]>;
   stints: {
     driver: string;
     compound: string;
@@ -255,13 +276,15 @@ export function clearFixtureCache(): void {
 }
 
 /** Expand the compact wire tuples into named fields. */
-export function toDeltaPoints(candidate: Candidate): DeltaPoint[] {
-  return candidate.deltaVsSimulatedReal.map(([lap, median, low, high, clampedFraction]) => ({
+export function toDeltaPoints(candidate: Candidate, clampLaps?: number[]): DeltaPoint[] {
+  const clamped = new Set(clampLaps ?? candidate.clampLaps);
+  return candidate.deltaVsSimulatedReal.map(([lap, median, low, high]) => ({
     lap,
     median,
     low,
     high,
-    clampedFraction,
+    // Reconstructed from `clampLaps`, which is what the column used to duplicate.
+    clampedFraction: clamped.has(lap) ? 1 : 0,
   }));
 }
 
@@ -272,7 +295,7 @@ export function toDeltaPoints(candidate: Candidate): DeltaPoint[] {
  */
 export function toActualPoints(candidate: Candidate): { lap: number; value: number }[] {
   return candidate.deltaVsActual
-    .map(([value], i) => ({ lap: candidate.deltaVsSimulatedReal[i]?.[0] ?? -1, value }))
+    .map((value, i) => ({ lap: candidate.deltaVsSimulatedReal[i]?.[0] ?? -1, value }))
     .filter((p): p is { lap: number; value: number } => p.value != null && p.lap >= 0);
 }
 
@@ -304,6 +327,19 @@ export function toSeedPoints(candidate: Candidate): { seed: number; points: Delt
  *   2. failing that, the nearest plausible one;
  *   3. failing that, reality itself.
  */
+/**
+ * The focus driver's alternate track position on a lap, or null if he has none
+ * there. Read from the aligned `positions` array — never interpolated.
+ */
+export function positionAtLap(
+  candidate: Candidate,
+  lap: number,
+): { median: number; best: number; worst: number } | null {
+  const i = candidate.deltaVsSimulatedReal.findIndex(([atLap]) => atLap === lap);
+  const entry = i >= 0 ? candidate.positions[i] : null;
+  return entry ? { median: entry[0], best: entry[1], worst: entry[2] } : null;
+}
+
 export function pickOpeningCandidate(candidates: Candidate[]): Candidate | null {
   if (candidates.length === 0) return null;
   const distance = (c: Candidate) => Math.abs(c.newLap - c.originalLap);

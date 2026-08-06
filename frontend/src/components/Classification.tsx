@@ -31,6 +31,26 @@ export type ClassificationProps = {
   rows: ClassificationRow[];
   focusDriver?: string;
   nRuns: number;
+  /**
+   * Phase 6.4. When the playhead is parked on a lap, the table shows the order at
+   * *that* lap instead of the finish.
+   *
+   * Deliberately the REAL field order plus the focus driver's alternate position,
+   * not a synthesised alternate order for everyone. Only the focus driver's
+   * per-lap position is stored, and substituting his alternate position into the
+   * real order would produce two cars in P3 and a hole elsewhere — an order the
+   * model never produced. So the real order is stated as the order, and his
+   * alternate position is shown as a displacement from it.
+   */
+  atLap?: {
+    lap: number;
+    /** Real order at this lap: driver codes, position 1 first. */
+    realOrder: string[];
+    /** The focus driver's alternate position at this lap, median across seeds. */
+    focusAlternatePosition: number | null;
+    /** Best and worst across seeds, so a contested lap can't read as settled. */
+    focusAlternateSpread: [number, number] | null;
+  };
 };
 
 /** Ink tint by share — darker means more of the ensemble landed there. */
@@ -41,8 +61,75 @@ function shareFill(share: number): string {
   return "#C9C3B6";
 }
 
-export default function Classification({ rows, focusDriver, nRuns }: ClassificationProps) {
+export default function Classification({
+  rows,
+  focusDriver,
+  nRuns,
+  atLap,
+}: ClassificationProps) {
   if (rows.length === 0) return null;
+
+  // Scrubbed view: a plain order at a lap, which is a different object from the
+  // outcome distribution below and is therefore drawn differently rather than
+  // being squeezed into the same table.
+  if (atLap) {
+    // His real position AT THIS LAP, read off the same order shown above — not
+    // his finishing position. Using `realPosition` here (the finish) produced
+    // "HAM is P2 on this lap against P1 in reality" while the list directly above
+    // it showed him second on that lap: the comparison silently changed which
+    // lap it was talking about halfway through the sentence.
+    const realHere = focusDriver ? atLap.realOrder.indexOf(focusDriver) : -1;
+    const delta = realHere >= 0 ? realHere + 1 : null;
+    return (
+      <section className="mt-6 rule-t pt-4">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
+          <h2 className="label-caps">Order on lap {atLap.lap}</h2>
+          <p className="font-mono text-micro text-ink/60">
+            real order, read from the lap record — not interpolated
+          </p>
+        </div>
+        <ol className="mt-3 grid grid-cols-2 gap-x-6 font-mono text-micro sm:grid-cols-4">
+          {atLap.realOrder.map((code, i) => (
+            <li
+              key={code}
+              className={`flex items-baseline gap-2 py-0.5 ${
+                code === focusDriver ? "bg-wash" : ""
+              }`}
+            >
+              <span className="w-5 text-right text-ink/45">{i + 1}</span>
+              <span className={code === focusDriver ? "font-medium" : ""}>{code}</span>
+            </li>
+          ))}
+        </ol>
+        {focusDriver && atLap.focusAlternatePosition != null && (
+          <p className="mt-3 max-w-prose font-serif text-[0.9rem] leading-snug">
+            In the alternate timeline {focusDriver} is{" "}
+            <span className="font-mono text-annotation">P{atLap.focusAlternatePosition}</span> on
+            this lap
+            {atLap.focusAlternateSpread &&
+              atLap.focusAlternateSpread[0] !== atLap.focusAlternateSpread[1] && (
+                <>
+                  {" "}
+                  <span className="text-ink/60">
+                    (P{atLap.focusAlternateSpread[0]}–P{atLap.focusAlternateSpread[1]} across the
+                    ensemble)
+                  </span>
+                </>
+              )}
+            {delta != null && delta !== atLap.focusAlternatePosition && (
+              <> against P{delta} in reality on the same lap.</>
+            )}
+            {delta === atLap.focusAlternatePosition && <> — the same place he was in reality.</>}
+            {delta == null && <> (he has no classified position in reality here).</>}
+            <span className="mt-1 block font-mono text-micro text-ink/45">
+              The rest of the order is reality&apos;s. Only this driver&apos;s alternate position is
+              stored, and inventing one for the others would put two cars in the same place.
+            </span>
+          </p>
+        )}
+      </section>
+    );
+  }
 
   // Shared scale across all rows so bar widths are comparable between drivers.
   const allPositions = rows.flatMap((r) => Object.keys(r.distribution).map(Number));

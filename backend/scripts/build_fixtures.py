@@ -335,20 +335,36 @@ def _build_candidate(job: tuple[str, int, int]) -> dict | None:
             if state.stuck_behind_clamped:
                 clamped[state.lap_number] += 1
 
+    # Track position per lap, for the Phase 6.4 playhead. The spec requires the
+    # order shown at a lap to be READ from stored state, never interpolated, so
+    # position is stored rather than re-derived on the client from a time delta.
+    # The median across seeds, because no single seed is the answer; the best and
+    # worst are stored too, so a lap where the ensemble disagrees about where he
+    # is cannot be presented as settled.
+    positions_by_lap: dict[int, list[int]] = defaultdict(list)
+    for result in results:
+        for state in result.lap_states:
+            if state.driver == driver and state.lap_number >= fork:
+                positions_by_lap[state.lap_number].append(state.position)
+
     baseline = _baseline_cumulative(fork).get(driver, {})
     real_cum = _REAL_CUM.get(driver, {})
 
     # Anchor at the last shared lap so the frontend's branch anchor has a point.
     anchor = fork - 1
     trace: list[list[float]] = []
-    actual_trace: list[list[float | None]] = []
+    actual_trace: list[float | None] = []
     traffic_by_lap: list[float] = []
+    # [median position, best across seeds, worst across seeds], or None on a lap
+    # the driver did not complete. Aligned with `deltaVsSimulatedReal`.
+    position_trace: list[list[int] | None] = []
     # Per-seed decision-effect deltas, kept aligned with `trace` so a few
     # individual trajectories can be drawn (see `seedTraces` below).
     per_seed: list[list[float]] = []
     if anchor >= 1:
-        trace.append([anchor, 0.0, 0.0, 0.0, 0.0])
-        actual_trace.append([0.0])
+        trace.append([anchor, 0.0, 0.0, 0.0])
+        actual_trace.append(0.0)
+        position_trace.append(None)
         traffic_by_lap.append(0.0)
         per_seed.append([0.0] * len(results))
 
@@ -367,6 +383,10 @@ def _build_candidate(job: tuple[str, int, int]) -> dict | None:
         # insists on: "how much traffic did he hit" is not "how much quicker
         # was he", and a single number that merges them can't be read.
         traffic = [a[1] - b[1] for a, b in zip(alt, base, strict=True)]
+        # No `clampedFraction` column: the only thing any consumer did with it was
+        # test `> 0.5`, which is precisely what `clampLaps` already records. It was
+        # 1 of 5 numbers on every lap of every candidate -- 5.5% of the payload
+        # duplicating a field stored beside it.
         trace.append(
             [
                 lap,
@@ -374,18 +394,24 @@ def _build_candidate(job: tuple[str, int, int]) -> dict | None:
                 # Band is quantiles of the delta itself (see module docstring).
                 round(_quantile(deltas, 0.1), 2),
                 round(_quantile(deltas, 0.9), 2),
-                round(clamped.get(lap, 0) / len(results), 3),
             ]
         )
         per_seed.append(deltas)
 
         traffic_by_lap.append(round(statistics.median(traffic), 3))
 
+        # Aligned index-for-index with `deltaVsSimulatedReal`, like the other
+        # per-lap series, rather than repeating the lap column.
+        seen = positions_by_lap.get(lap, [])
+        position_trace.append(
+            [round(statistics.median(seen)), min(seen), max(seen)] if seen else None
+        )
+
         real = real_cum.get(lap)
         # Aligned index-for-index with `deltaVsSimulatedReal` rather than
         # carrying its own lap column, which halves it.
         actual_trace.append(
-            [round(statistics.median(a[0] - real for a in alt), 2)] if real is not None else [None]
+            round(statistics.median(a[0] - real for a in alt), 2) if real is not None else None
         )
 
     # --- A few real trajectories, not just the summary (spec 6.10) ---
@@ -536,10 +562,12 @@ def _build_candidate(job: tuple[str, int, int]) -> dict | None:
         "divergenceLap": fork,
         "deltaVsSimulatedReal": trace,
         "deltaVsActual": actual_trace,
+        "positions": position_trace,
         "seedTraces": seed_traces,
         "plausibility": {
             "finalDeltaS": final_delta,
             "sPerLap": round(final_delta / post_fork_laps, 3),
+
             "boundS": bound,
             "implausible": implausible,
             # Named here rather than re-derived by each consumer, so the UI's
@@ -566,7 +594,12 @@ def _build_candidate(job: tuple[str, int, int]) -> dict | None:
                 for cell in provenance
             ),
         },
-        "fitProvenance": provenance,
+        # Only the per-candidate part. The cell statistics themselves (observation
+        # count, r2, slope, cliff) are per-driver constants and were being repeated
+        # on all ~140 candidates -- 4.8% of the payload. They now live once in
+        # `meta.tyreCells`.
+        "fitReliance": {cell["compound"]: cell["postForkLaps"] for cell in provenance},
+        "tyreCells": provenance,
         "classification": classification,
         "clampLaps": sorted(lap for lap, n in clamped.items() if n > len(results) / 2),
         "extrapolatedLaps": sum(1 for e in excess_by_lap.values() if e > 0),
@@ -630,6 +663,23 @@ def build_race(race_key: str, workers: int) -> dict:
     for (driver, lap_number), gap in sorted(real_gaps.items(), key=lambda kv: (kv[0][0], kv[0][1])):
         real_series[driver].append([lap_number, round(gap, 2)])
 
+    # Real track position per lap for the whole field, for the Phase 6.4 playhead.
+    # Read straight off the ingested laps rather than re-derived by sorting
+    # gap-to-leader: ordering by gap would invent an order on any lap where two
+    # cars share a rounded gap, and the real position is right there in the data
+    # (Rule 1 — read, don't derive).
+    real_positions: dict[str, list[list[int]]] = defaultdict(list)
+    for lap in sorted(snapshot.laps, key=lambda item: (item.driver, item.lap_number)):
+        # `position == 0` is FastF1's sentinel for "no classified position", not a
+        # position. It appears on exactly the lap a car retires on: the car stops
+        # part-way round, so there is no lap time and no place. Emitting it would
+        # sort that driver to the FRONT of the order — the playhead would show a
+        # retired car leading the race. Found by a range assertion on the
+        # generated files (2019 Australian GRO L30 and SAI L10, 2021 Spanish
+        # TSU L7); a retired driver correctly just leaves the order.
+        if lap.position is not None and int(lap.position) >= 1:
+            real_positions[lap.driver].append([lap.lap_number, int(lap.position)])
+
     tyre_age = {(lap.driver, lap.lap_number): lap.tyre_life for lap in snapshot.laps}
 
     def age_bounds(driver: str, start: int, end: int) -> tuple[int, int]:
@@ -678,6 +728,7 @@ def build_race(race_key: str, workers: int) -> dict:
             for d in snapshot.drivers
         ],
         "realSeries": real_series,
+        "realPositions": {driver: laps for driver, laps in sorted(real_positions.items())},
         "stints": [
             {
                 "driver": s.driver,
@@ -699,6 +750,18 @@ def build_race(race_key: str, workers: int) -> dict:
     written.append((base_path, base_path.stat().st_size))
     for driver, candidates in sorted(by_driver.items()):
         candidates.sort(key=lambda c: (c["originalLap"], c["newLap"]))
+
+        # Hoist the per-driver constants out of every candidate. The tyre-cell
+        # statistics and the plausibility bound are identical on all ~140 of a
+        # driver's candidates; repeating them was 7.5% of the payload for no
+        # information. Each candidate keeps only what varies: `fitReliance`, how
+        # many post-fork laps that candidate runs on each compound.
+        tyre_cells = candidates[0].pop("tyreCells", []) if candidates else []
+        bound_s = candidates[0]["plausibility"].get("boundS", 0.0) if candidates else 0.0
+        for candidate in candidates:
+            candidate.pop("tyreCells", None)
+            candidate["plausibility"].pop("boundS", None)
+
         payload = {
             "meta": {
                 "raceKey": race_key,
@@ -716,6 +779,9 @@ def build_race(race_key: str, workers: int) -> dict:
                     c.value: age for c, age in observed_max_tyre_age(snapshot, driver).items()
                 },
                 "excludedFromGate": EXCLUDED_FROM_GATE.get(race_key),
+                # Per-driver constants, hoisted out of every candidate.
+                "tyreCells": tyre_cells,
+                "plausibilityBoundS": bound_s,
                 "paramFingerprint": fingerprint,
                 "source": "backend/scripts/build_fixtures.py",
             },

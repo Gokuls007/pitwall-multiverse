@@ -6,6 +6,7 @@ import {
   fixtureKey,
   loadDriverFixture,
   pickOpeningCandidate,
+  positionAtLap,
   toActualPoints,
   toDeltaPoints,
   toSeedPoints,
@@ -73,12 +74,16 @@ describe("per-driver fixture loading", () => {
   it("expands the compact wire tuples into named fields", () => {
     const candidate = {
       deltaVsSimulatedReal: [
-        [49, 0, 0, 0, 0],
-        [50, 2.23, 1.1, 3.4, 0.6],
+        [49, 0, 0, 0],
+        [50, 2.23, 1.1, 3.4],
       ],
+      // The held-up flag is no longer a fifth column on every lap; it is
+      // reconstructed from `clampLaps`, which is what that column duplicated.
+      clampLaps: [50],
     } as unknown as Candidate;
     const points = toDeltaPoints(candidate);
-    expect(points[1]).toEqual({ lap: 50, median: 2.23, low: 1.1, high: 3.4, clampedFraction: 0.6 });
+    expect(points[1]).toEqual({ lap: 50, median: 2.23, low: 1.1, high: 3.4, clampedFraction: 1 });
+    expect(points[0].clampedFraction).toBe(0);
   });
 
   it("re-joins the aligned diagnostic series to their laps", () => {
@@ -88,12 +93,14 @@ describe("per-driver fixture loading", () => {
     // broken the diagnostic silently plots against the wrong laps.
     const candidate = {
       deltaVsSimulatedReal: [
-        [49, 0, 0, 0, 0],
-        [50, 2.23, 1.1, 3.4, 0],
-        [51, 3.0, 2.0, 4.0, 0],
+        [49, 0, 0, 0],
+        [50, 2.23, 1.1, 3.4],
+        [51, 3.0, 2.0, 4.0],
       ],
-      deltaVsActual: [[0], [9.1], [null]],
+      deltaVsActual: [0, 9.1, null],
       seedTraces: [{ seed: 7, values: [0, 1.5, 2.5] }],
+      positions: [[3, 3, 3], [4, 3, 6], null],
+      clampLaps: [],
     } as unknown as Candidate;
 
     // Lap 51 has no real record (the driver retired), so it is dropped rather
@@ -107,6 +114,14 @@ describe("per-driver fixture loading", () => {
       [50, 1.5],
       [51, 2.5],
     ]);
+
+    // Positions are read at a lap, never interpolated between laps — the whole
+    // basis of the Phase 6.4 playhead.
+    expect(positionAtLap(candidate, 50)).toEqual({ median: 4, best: 3, worst: 6 });
+    // Lap 51 has no stored position (he did not complete it), so there is nothing
+    // to report rather than something to guess.
+    expect(positionAtLap(candidate, 51)).toBeNull();
+    expect(positionAtLap(candidate, 99)).toBeNull();
   });
 
   it("opens on a defensible candidate, not the biggest number", () => {

@@ -93,6 +93,25 @@ function stepValid(validLaps: number[], current: number, count: number): number 
 /** Width of the invisible pointer target around the 1.25px tick. */
 const TICK_HIT_WIDTH = 44;
 
+/**
+ * Contiguous runs of valid laps, as [firstLap, lastLap] pairs.
+ *
+ * Drawn as a rail under the draggable row so the reachable range is visible
+ * before you grab anything, and so the gaps explain themselves. Without it the
+ * handle skipping a lap during a slow drag reads as dropped frames rather than
+ * as "the engine refuses that candidate" — which is what it is: a pit lap that
+ * would push a stint past the following real stop has no ensemble behind it.
+ */
+function contiguousRuns(validLaps: number[]): [number, number][] {
+  const runs: [number, number][] = [];
+  for (const lap of validLaps) {
+    const last = runs[runs.length - 1];
+    if (last && lap === last[1] + 1) last[1] = lap;
+    else runs.push([lap, lap]);
+  }
+  return runs;
+}
+
 export type StintRun = {
   compound: string;
   startLap: number;
@@ -112,6 +131,8 @@ export type StrategyTimelineProps = {
   onHoverLap?: (lap: number | null) => void;
   /** When present, that row's leading pit tick becomes the draggable control. */
   pitDrag?: PitDrag;
+  /** Phase 6.4: draw stints only up to this lap. `null` shows the whole race. */
+  revealLap?: number | null;
 };
 
 const ROW_HEIGHT = 26;
@@ -124,8 +145,10 @@ export default function StrategyTimeline({
   hoverLap,
   onHoverLap,
   pitDrag,
+  revealLap = null,
 }: StrategyTimelineProps) {
-  const height = TOP_PAD + rows.length * ROW_HEIGHT + 6;
+  // Extra room below the last row when a rail and its "real" label are drawn.
+  const height = TOP_PAD + rows.length * ROW_HEIGHT + (pitDrag ? 22 : 6);
   const svgRef = useRef<SVGSVGElement | null>(null);
   const dragging = useRef(false);
 
@@ -216,15 +239,17 @@ export default function StrategyTimeline({
                 </text>
 
                 {row.stints.map((stint) => {
+                  const lastVisible =
+                    revealLap == null ? axis.lastLap : Math.min(axis.lastLap, revealLap);
                   const x0 = axis.x(Math.max(stint.startLap, axis.firstLap));
-                  const x1 = axis.x(Math.min(stint.endLap, axis.lastLap));
-                  if (stint.endLap < axis.firstLap || stint.startLap > axis.lastLap) return null;
+                  const x1 = axis.x(Math.min(stint.endLap, lastVisible));
+                  if (stint.endLap < axis.firstLap || stint.startLap > lastVisible) return null;
                   const width = Math.max(1, x1 - x0);
                   const fill = compoundFill(stint.compound);
 
                   // Where this stint crosses from evidence into extrapolation.
                   const beyondStart =
-                    stint.firstExtrapolatedLap != null
+                    stint.firstExtrapolatedLap != null && stint.firstExtrapolatedLap <= lastVisible
                       ? axis.x(Math.max(stint.firstExtrapolatedLap, axis.firstLap))
                       : null;
 
@@ -283,6 +308,43 @@ export default function StrategyTimeline({
           {/* --- Phase 6.3: the real-lap notch and the drag handle --- */}
           {pitDrag && (
             <>
+              {/* The rail: where this stop can actually go. Gaps are laps the
+                  engine refused, so a skip during a slow drag is legible as a
+                  refusal rather than as jitter. */}
+              <g aria-hidden="true">
+                <line
+                  x1={axis.x(Math.max(axis.firstLap, pitDrag.validLaps[0] + pitDrag.tickLap - pitDrag.lap))}
+                  x2={axis.x(
+                    Math.min(
+                      axis.lastLap,
+                      pitDrag.validLaps[pitDrag.validLaps.length - 1] + pitDrag.tickLap - pitDrag.lap,
+                    ),
+                  )}
+                  y1={pitDrag.rowIndex * ROW_HEIGHT + BAR_HEIGHT + 7}
+                  y2={pitDrag.rowIndex * ROW_HEIGHT + BAR_HEIGHT + 7}
+                  stroke="#C9C3B6"
+                  strokeWidth={3}
+                />
+                {contiguousRuns(pitDrag.validLaps).map(([from, to]) => {
+                  // Shift into bar coordinates, the same offset the handle uses.
+                  const offset = pitDrag.tickLap - pitDrag.lap;
+                  const a = Math.max(axis.firstLap, from + offset);
+                  const b = Math.min(axis.lastLap, to + offset);
+                  if (b < a) return null;
+                  return (
+                    <line
+                      key={`rail-${from}`}
+                      x1={axis.x(a)}
+                      x2={axis.x(b)}
+                      y1={pitDrag.rowIndex * ROW_HEIGHT + BAR_HEIGHT + 7}
+                      y2={pitDrag.rowIndex * ROW_HEIGHT + BAR_HEIGHT + 7}
+                      stroke="#A33A2E"
+                      strokeOpacity={0.35}
+                      strokeWidth={3}
+                    />
+                  );
+                })}
+              </g>
               {/* Persistent marker at the REAL lap, drawn whether or not the tick
                   is anywhere near it. This is the zero-extrapolation point:
                   always being able to see where you departed from the evidence,
@@ -303,7 +365,7 @@ export default function StrategyTimeline({
                   />
                   <text
                     x={axis.x(pitDrag.realLap)}
-                    y={pitDrag.rowIndex * ROW_HEIGHT + BAR_HEIGHT + 14}
+                    y={pitDrag.rowIndex * ROW_HEIGHT + BAR_HEIGHT + 18}
                     textAnchor="middle"
                     className="font-mono"
                     fontSize={8}

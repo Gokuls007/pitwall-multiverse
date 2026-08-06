@@ -134,6 +134,11 @@ export type GapChartProps = {
   divergenceLap?: number;
   /** Ensemble size behind the median and band, for the legend's honesty. */
   nRuns?: number;
+  /**
+   * Phase 6.4: draw only up to this lap, so the traces come in progressively as
+   * the playhead advances. `null` shows the whole race.
+   */
+  revealLap?: number | null;
   safetyCarPeriods?: { kind: string; startLap: number; endLap: number }[];
   height?: number;
   hoverLap?: number | null;
@@ -155,6 +160,7 @@ export default function GapChart({
   seedSeries,
   divergenceLap,
   nRuns,
+  revealLap = null,
   safetyCarPeriods = [],
   height = 300,
   hoverLap = null,
@@ -242,6 +248,12 @@ export default function GapChart({
     });
   }, [deltaSeries, firstLap, lastLap, branchAnchorLap, alternateInRange, realByLapForFocus]);
 
+  /** The subset actually drawn, once the playhead has clipped it. */
+  const deltaShown = useMemo(
+    () => (revealLap == null ? deltaInRange : deltaInRange.filter((p) => p.lap <= revealLap)),
+    [deltaInRange, revealLap],
+  );
+
   /** [min, max] of the y variable. Field mode floors at 0; delta centres on it. */
   const [yLo, yHi] = useMemo<[number, number]>(() => {
     if (isDelta) {
@@ -277,7 +289,13 @@ export default function GapChart({
   const y = (v: number) => ((v - yLo) / (yHi - yLo)) * innerHeight;
 
   const path = (points: GapPoint[]) => {
-    const clipped = points.filter((p) => inRange(p.lap));
+    // `revealLap` clips the drawing, never the scale: the y-range is computed
+    // from the whole visible window so the axis doesn't rescale on every lap of
+    // playback. The same lesson as freezing the lap window during the pit drag —
+    // geometry that moves while something animates over it is unreadable.
+    const clipped = points.filter(
+      (p) => inRange(p.lap) && (revealLap == null || p.lap <= revealLap),
+    );
     return clipped.length
       ? clipped.map((p, i) => `${i === 0 ? "M" : "L"}${x(p.lap).toFixed(2)},${y(p.gap).toFixed(2)}`).join(" ")
       : "";
@@ -337,10 +355,10 @@ export default function GapChart({
    */
   const overflows = useMemo(() => {
     if (!isDelta) return [] as { lap: number; value: number; above: boolean }[];
-    return deltaInRange
+    return deltaShown
       .filter((p) => p.gap < yLo || p.gap > yHi)
       .map((p) => ({ lap: p.lap, value: p.gap, above: p.gap < yLo }));
-  }, [isDelta, deltaInRange, yLo, yHi]);
+  }, [isDelta, deltaShown, yLo, yHi]);
 
   /** The single most extreme overflow, labelled with its value. */
   const peakOverflow = useMemo(
@@ -459,9 +477,9 @@ export default function GapChart({
           {/* Pace-only band. Means ONE thing: uncertainty about pace. Bounds
               are already clamped at the gap variable's floor before being
               differenced, so the band cannot reach into impossible territory. */}
-          {isDelta && deltaInRange.length > 0 && (
+          {isDelta && deltaShown.length > 0 && (
             <path
-              d={`${path(deltaInRange.map((p) => ({ lap: p.lap, gap: p.high })))} ${deltaInRange
+              d={`${path(deltaShown.map((p) => ({ lap: p.lap, gap: p.high })))} ${deltaShown
                 .slice()
                 .reverse()
                 .map((p) => `L${x(p.lap).toFixed(2)},${y(p.low).toFixed(2)}`)
@@ -543,8 +561,8 @@ export default function GapChart({
             />
           )}
 
-          {isDelta && deltaInRange.length > 0 && (
-            <path d={path(deltaInRange)} fill="none" stroke="#A33A2E" strokeWidth={1.75} />
+          {isDelta && deltaShown.length > 0 && (
+            <path d={path(deltaShown)} fill="none" stroke="#A33A2E" strokeWidth={1.75} />
           )}
 
           {/* Branch node: without it the two strokes read as a break in one
@@ -566,7 +584,7 @@ export default function GapChart({
 
           {/* Held-up ticks: traffic as a discrete EVENT, not diffused band. */}
           {isDelta &&
-            deltaInRange
+            deltaShown
               .filter((p) => p.clampedFraction > 0.5)
               .map((p) => (
                 <line
