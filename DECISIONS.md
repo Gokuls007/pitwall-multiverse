@@ -3696,3 +3696,69 @@ visible as a test asserting 2 and getting 3.
 
 **Also:** `availableStops` reads the stop list from the file listing, so the stop
 selector renders before any candidate file is fetched.
+
+### 2026-08-06 — Phase 7: the multiverse tree is breadth, not depth
+
+**The layout test settled the depth question before any data was built for it.**
+`?treelab` renders `MultiverseTree` against fabricated nodes at a chosen depth
+and branching factor. Three results:
+
+- **Depth 1 at 19 branches: fully legible.** Every label readable, every fork at a
+  distinct lap, the unavailable stub visibly unavailable.
+- **Depth 2: labels survive, ancestry does not.** With the label-nudge in place
+  the text is readable at 21 nodes, but the second-level forks are visually
+  indistinguishable from first-level ones — you cannot tell which branch came
+  from which. For a tree that is *the* failure: if the parent-child relation is
+  not legible, it is not a tree, it is a bundle of lines.
+- **Depth 3: collapses.** 40 nodes push labels off the bottom of the frame and
+  compress every fork into laps 60-70.
+
+The data says the same thing louder, and independently: only **3% of first
+decisions stay inside observed tyre age**, so a second decision stacked on a
+first makes depth-2 nodes almost entirely extrapolation and depth-3 fiction. A
+signature element that renders beautifully and returns nothing defensible is
+worse than a smaller one that works. So: one branch per driver, at exactly the
+strength the single-comparison view can defend.
+
+**A layout finding worth keeping: y is the net effect, not finishing position.**
+The first version used position for y, because "where did they finish" is the
+obvious answer. It failed at depth 2 *and* depth 1 for the same reason: position
+is an integer over ~20 values, so branches finishing in the same place land on
+exactly the same line and both paths and labels overlap — thirteen nodes
+collapsed onto four rows. Net effect is continuous, so exact collisions are rare
+and *near*-collisions are meaningful: two branches drawn close together really
+did cost the same. It is also the variable the comparison chart plots, with
+reality at zero, so the tree's y axis and that chart's y axis now mean the same
+thing.
+
+Labels that would still overlap are nudged apart with a leader line back to the
+branch. The nudge is applied to the **text only, never the path** — the geometry
+keeps telling the truth.
+
+**Which candidate each branch shows is the whole design of the panel, and the
+first attempt was wrong.** It took the defensible candidate *nearest* reality,
+which is the most conservative possible choice: nineteen of twenty branches came
+out sub-second, piled onto the zero rule, and the picture said nothing. The
+product's question is not "what is the smallest change" but "what is the best
+this driver could have done that the model can defend". So within the defensible
+tier the branch is the **largest** effect; outside it, the nearest — because a
+large extrapolating number is exactly the artifact this project spends its time
+refusing to headline. A test pins that: no branch in the tree exceeds 60s, while
+the catalogue contains a +192s candidate.
+
+What that produces on 2019 Hungary: **BOT L5→8 at −16.8s** forking at the far
+left, **RUS L16→15 at −9.8s**, then a dense band of eighteen drivers between
+−1.1s and +3.0s. Two of twenty had a defensible decision worth more than a couple
+of seconds. That is the finding, and it is visible without reading the labels.
+
+**Unavailable branches are drawn, not omitted** — dashed, grey, labelled "no
+decision to move" — because a tree that silently drops cars is indistinguishable
+from one where those cars had nothing to say. At Hungary all 20 drivers are
+branchable so the stub does not appear there; it is exercised in the layout lab
+and the header states the count either way ("20 branchable · 0 with no decision
+to move").
+
+**The lab stays, behind `?treelab`.** It renders fabricated numbers, so it is not
+reachable from any control in the app — fabricated numbers must never be one
+state change away from the real interface — and the page says so in its own
+header.

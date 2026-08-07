@@ -457,3 +457,59 @@ describe("the decision space as small multiples (Phase 6.5)", () => {
     expect((screen.getByLabelText(/stop to move/i) as HTMLSelectElement).value).toBe("67");
   });
 });
+
+describe("the multiverse tree (Phase 7)", () => {
+  it("is breadth, not depth: reality plus one branch per driver", async () => {
+    render(<App />);
+    await waitFor(() => expect(screen.getByText(/the multiverse/i)).toBeInTheDocument());
+
+    const svg = screen.getByLabelText(/multiverse tree/i);
+    const labels = [...svg.querySelectorAll("text")].map((t) => t.textContent ?? "");
+    expect(labels).toContain("reality");
+    // One branch per driver in the field, not a stack of second decisions. Depth
+    // is capped at 1 deliberately — see the component docstring.
+    const branches = labels.filter((l) => /^[A-Z]{3} L\d+→\d+/.test(l));
+    expect(branches.length).toBeGreaterThanOrEqual(18);
+  });
+
+  it("costs no fetches: the whole tree comes off the base file", async () => {
+    render(<App />);
+    await waitFor(() => expect(screen.getByText(/the multiverse/i)).toBeInTheDocument());
+    // Base + the one selected candidate set. Twenty branches, two requests.
+    expect(requested().length).toBe(2);
+  });
+
+  it("branches on the largest DEFENSIBLE effect, not the largest effect", async () => {
+    // The catalogue's biggest numbers are artifacts. A tree that ranked by
+    // magnitude would be a gallery of them, so the defensible tier is preferred
+    // first and only then sorted by size.
+    render(<App />);
+    await waitFor(() => expect(screen.getByText(/the multiverse/i)).toBeInTheDocument());
+
+    const svg = screen.getByLabelText(/multiverse tree/i);
+    const labels = [...svg.querySelectorAll("text")].map((t) => t.textContent ?? "");
+    const magnitudes = labels
+      .map((l) => /([+-]\d+\.\d)s$/.exec(l)?.[1])
+      .filter((v): v is string => v != null)
+      .map((v) => Math.abs(Number(v)));
+    // Nothing in the tree is anywhere near VER 67->1's +192s artifact.
+    expect(Math.max(...magnitudes)).toBeLessThan(60);
+  });
+
+  it("forks each branch at the lap its decision was taken", async () => {
+    render(<App />);
+    await waitFor(() => expect(screen.getByText(/the multiverse/i)).toBeInTheDocument());
+    // BOT's real first stop is lap 5, so his branch must leave the trunk at the
+    // far left; a tree that forked everything at the same x would be decoration.
+    const svg = screen.getByLabelText(/multiverse tree/i);
+    const labels = [...svg.querySelectorAll("text")].map((t) => t.textContent ?? "");
+    expect(labels.some((l) => l.startsWith("BOT L5→"))).toBe(true);
+  });
+
+  it("states the breadth-not-depth choice rather than leaving it implicit", async () => {
+    render(<App />);
+    await waitFor(() => expect(screen.getByText(/the multiverse/i)).toBeInTheDocument());
+    expect(screen.getByText(/breadth, not depth/i)).toBeInTheDocument();
+    expect(screen.getByText(/branchable/i)).toBeInTheDocument();
+  });
+});

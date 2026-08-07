@@ -29,6 +29,7 @@ import GapChart, { type GapPoint } from "./components/GapChart";
 import LapAxisPanes from "./components/LapAxisPanes";
 import DecisionSpace from "./components/DecisionSpace";
 import LapPlayhead from "./components/LapPlayhead";
+import MultiverseTree, { type TreeNode } from "./components/MultiverseTree";
 import StrategyTimeline, { type StintRun } from "./components/StrategyTimeline";
 import {
   availableDrivers,
@@ -508,6 +509,129 @@ export default function App() {
     };
   }, [playheadLap, base, selected]);
 
+  /**
+   * The multiverse tree: reality as the trunk, one branch per driver.
+   *
+   * Breadth, not depth. Two independent findings pushed it here. The layout test
+   * (`?treelab`) showed depth 1 stays legible at 19 branches while depth 2 keeps
+   * its labels but loses its ancestry — you cannot tell which fork came from
+   * which — and depth 3 collapses entirely. And the data says the same thing
+   * louder: only 3% of *first* decisions stay inside observed tyre age, so a
+   * second decision stacked on a first would make every depth-2 node an
+   * extrapolation. A tree that renders beautifully and returns nothing defensible
+   * is worse than a smaller one that works.
+   *
+   * So each branch is the same question asked once per driver — did this decision
+   * bring the car into contention — at exactly the strength the single-comparison
+   * view can defend. Built entirely from the base file's summary, so the whole
+   * tree costs no fetches.
+   */
+  const treeNodes = useMemo<TreeNode[]>(() => {
+    if (!base) return [];
+    const finish = new Map(base.drivers.map((d) => [d.code, d.finishPosition ?? 20]));
+    const nodes: TreeNode[] = [
+      {
+        id: "reality",
+        parentId: null,
+        divergenceLap: 1,
+        endPosition: finish.get(driver) ?? 1,
+        label: "reality",
+        deltaS: 0,
+        extrapolatedLaps: 0,
+        cause: null,
+      },
+    ];
+
+    for (const entry of base.drivers) {
+      const byStop = base.decisionSpace?.[entry.code];
+      if (!entry.hasCandidates || !byStop) {
+        // In the field but not branchable: no real pit stop, or the engine
+        // refused every shift of the ones he made. Drawn as a dashed stub rather
+        // than dropped, because a tree that silently omits cars is
+        // indistinguishable from one where those cars had nothing to say.
+        nodes.push({
+          id: `none-${entry.code}`,
+          parentId: "reality",
+          divergenceLap: Math.round((base.meta.totalLaps * 2) / 3),
+          endPosition: entry.finishPosition ?? 20,
+          label: `${entry.code} — no decision to move`,
+          deltaS: 0,
+          extrapolatedLaps: 0,
+          cause: null,
+          unavailable: true,
+        });
+        continue;
+      }
+
+      // One branch per driver, and *which* candidate is the whole design of this
+      // panel.
+      //
+      // The first version took the candidate nearest reality among the defensible
+      // ones. That is the most conservative possible choice and it made the tree
+      // useless: nineteen of twenty branches were sub-second, so they piled onto
+      // the zero rule and the picture said nothing. The question the product asks
+      // is not "what is the smallest change" — it is "what is the best this
+      // driver could have done that the model can actually defend".
+      //
+      // So within the defensible tier, take the LARGEST effect. Outside it, stay
+      // conservative and take the nearest, because a large extrapolating number
+      // is exactly the artifact this project spends its time refusing to
+      // headline.
+      const tier = (x: { extrapolatedLaps: number; cause: string | null }) =>
+        x.extrapolatedLaps === 0 && x.cause == null ? 0 : x.cause == null ? 1 : 2;
+      let best: { stopLap: number; c: ReturnType<typeof toSummary>[number] } | null = null;
+      for (const [stopKey, rows] of Object.entries(byStop)) {
+        const stopLap = Number(stopKey);
+        for (const c of toSummary(rows)) {
+          if (c.newLap === stopLap) continue;
+          if (best == null) {
+            best = { stopLap, c };
+            continue;
+          }
+          const t = tier(c);
+          const bt = tier(best.c);
+          if (t !== bt) {
+            if (t < bt) best = { stopLap, c };
+            continue;
+          }
+          const better =
+            t === 0
+              ? Math.abs(c.finalDeltaS) > Math.abs(best.c.finalDeltaS)
+              : Math.abs(c.newLap - stopLap) < Math.abs(best.c.newLap - best.stopLap);
+          if (better) best = { stopLap, c };
+        }
+      }
+      if (!best) continue;
+
+      // For the driver currently in focus, follow the selection instead, so the
+      // tree and the comparison view above it never disagree.
+      const useSelected = entry.code === driver && selected != null && stopLap != null;
+      const shown = useSelected
+        ? {
+            newLap: selected!.newLap,
+            finalDeltaS: selected!.plausibility.finalDeltaS,
+            extrapolatedLaps: selected!.extrapolatedLaps,
+            cause: selected!.plausibility.cause,
+            stopLap: stopLap!,
+          }
+        : { ...best.c, stopLap: best.stopLap };
+
+      nodes.push({
+        id: `${entry.code}-${shown.stopLap}-${shown.newLap}`,
+        parentId: "reality",
+        divergenceLap: Math.min(shown.stopLap, shown.newLap),
+        endPosition: finish.get(entry.code) ?? 20,
+        label: `${entry.code} L${shown.stopLap}→${shown.newLap} ${
+          shown.finalDeltaS >= 0 ? "+" : ""
+        }${shown.finalDeltaS.toFixed(1)}s`,
+        deltaS: shown.finalDeltaS,
+        extrapolatedLaps: shown.extrapolatedLaps,
+        cause: shown.cause,
+      });
+    }
+    return nodes;
+  }, [base, driver, selected, stopLap]);
+
   const nSeeds = fixture?.meta.nSeeds ?? 0;
   const excluded = base?.meta.excludedFromGate ?? null;
 
@@ -837,6 +961,39 @@ export default function App() {
           nRuns={nSeeds}
           atLap={orderAtPlayhead}
         />
+      )}
+
+      {treeNodes.length > 1 && (
+        <section className="mt-6 rule-t pt-4">
+          <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
+            <h2 className="label-caps">The multiverse — one branch per driver</h2>
+            <p className="font-mono text-micro text-ink/60">
+              {treeNodes.filter((n) => !n.unavailable && n.parentId).length} branchable ·{" "}
+              {treeNodes.filter((n) => n.unavailable).length} with no decision to move
+            </p>
+          </div>
+          <p className="mt-1 max-w-prose font-serif text-[0.85rem] italic leading-snug text-ink/70">
+            Breadth, not depth. Stacking a second decision on a first would make almost every
+            node an extrapolation — only 3% of single decisions stay inside the evidence — and
+            the layout stops being traceable past one level. Each branch forks at the lap its
+            decision was taken; y is time gained or lost against reality, the same variable the
+            comparison chart plots.
+          </p>
+          <div className="mt-2 overflow-x-auto">
+            <MultiverseTree
+              nodes={treeNodes}
+              totalLaps={base?.meta.totalLaps ?? 70}
+              selectedId={
+                treeNodes.find((n) => n.id.startsWith(`${driver}-`))?.id ?? null
+              }
+              onSelect={(id) => {
+                const code = id.split("-")[0];
+                if (code !== "reality" && code !== "none") setDriver(code);
+              }}
+              height={Math.max(260, treeNodes.length * 15 + 60)}
+            />
+          </div>
+        </section>
       )}
 
       {base && (
