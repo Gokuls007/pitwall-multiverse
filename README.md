@@ -138,14 +138,26 @@ number kept separately as a race-shape diagnostic.
 **Every counterfactual leaves the evidence somewhere.** Observed tyre ages are
 definitionally what actually happened, so reality is the zero-extrapolation point *by
 construction*. Shifting a pit stop lengthens one stint and shortens another, so there is
-**no safe direction** — moving Verstappen's 2019 Hungary stop earlier pushes the following
-soft stint to 23 laps against the 6 he ran; moving it later pushes the hard stint past 42.
+**no safe direction** — moving Verstappen's 2019 Hungary lap-67 stop to lap 50 takes the
+following soft stint to **tyre age 23** against the 6 he actually reached on that compound;
+moving it to lap 68 instead takes the hard stint to age 43, past the 42 he ran. (Age, not
+stint length: the stint is 20 laps. Writing "23 laps" here would be the same conflation as
+finding 5, in the README describing finding 5.)
 The UI shows this curve live rather than blocking choices past the data, because the most
 interesting question in that race *is* 17 laps beyond the evidence.
 
 **Held-up time is not pace.** When a car is pinned behind one it can't pass, the model adds
 real, permanent time. That's tracked in its own field so a confidence band on a gap reports
 pace uncertainty only, rather than silently mixing in "how much traffic did this car hit."
+
+**Overtakes are resolved in a single pass, and the field can only shuffle one place per
+lap.** `resolve_positions` walks adjacent pairs left to right once per lap; a pair that has
+just swapped is not re-checked, so a car cannot gain two places in a lap even when it is
+comfortably quicker than both. That is a deliberate simplification matching spec 7.1's "for
+each pair in close proximity" as one resolution pass rather than a fixed-point iteration —
+but it biases the simulator against fast cars recovering through a midfield, which is
+exactly the situation an early-pit counterfactual creates. Read the traffic component of a
+result with that in mind.
 
 **A concrete miss, since a general caveat is cheaper than an example.** In the Hungary
 counterfactual, Bottas really finished P8 — the model puts him at P10 in 83% of its 60
@@ -168,7 +180,7 @@ claim is narrower than it sounds, so here it is in full.
 | `fuel_effect_s_per_lap` | **Fitted** (pooled cross-driver) — distinguishable from the prior by cluster-robust CI on only 1 of 5 races |
 | `base_pace_s` | **Fitted** for most drivers; teammate/field-median fallback for a few per race |
 | `linear_deg_s_per_lap` (tyre wear) | **Fitted** for 66–95% of driver/compound cells; pooled or flat fallback for the rest, all tracked in `tyre_cell_provenance` |
-| `base_offset_s` separation | **Prior-dominated** — 61% of adjacent-compound gaps sit at exactly the declared 0.15s floor |
+| `base_offset_s` separation | **Prior-dominated** — ~61% of adjacent-compound gaps sit at exactly the declared 0.15s floor (66/109 when first measured; 57/92 on a re-check after the degradation refit — the two passes enumerate pairs slightly differently, the conclusion does not move) |
 | `pit_lane_loss_s` | **Fitted** from real in/out-lap timing (downstream of the pace model, so it inherits its bias) |
 | `dirty_air` | **Fitted** from pooled cross-race residuals: max penalty 1.290s [0.846, 1.850], decay 0.864s [0.564, 1.494] (clustered bootstrap) |
 | `overtake_difficulty` | **Fitted**, acknowledged noisy single-race estimate |
@@ -230,6 +242,82 @@ it drifts from live code. A win fraction of "25%" was once quoted in prose after
 parameter it depended on had already been refitted; that class of error is now impossible
 rather than merely discouraged.
 
+**6. Most pit calls were roughly right — and that is the tool's actual answer.** Across
+2019 Hungary's 1,580 candidate decisions, exactly **two of twenty drivers** had an
+alternative worth more than a couple of seconds that the model can also defend (Bottas,
+−16.8s from stopping on lap 8 rather than 5; Russell, −9.8s from lap 15 rather than 16).
+Eighteen sit between −1.1s and +3.0s. The arguments fans have about pit timing are, on this
+evidence, mostly arguments about noise. That is a more interesting result than any single
+counterfactual, and it is the kind of claim only a tool that enumerates the whole decision
+space can make.
+
+**7. Only 3% of the decision space is inside the model's own evidence.** 53 of those 1,580
+candidates keep every stint within a tyre age the driver actually reached. The rest
+extrapolate, and the interface says so per candidate rather than in a footnote. The *width*
+of the defensible region is itself a per-driver property: Hamilton has 14 defensible
+candidates at his lap-48 stop, Verstappen has **none at either of his** — because Hamilton
+ran a compound in more than one stint and Verstappen ran each exactly once, so every one of
+his stints ended at its own observed maximum by construction. Any shift in any direction
+leaves the evidence immediately.
+
+That is the same compound-revisit property as finding 1. **The drivers whose tyre models are
+best identified are exactly the drivers whose counterfactuals are defensible** — one
+structural fact of the sport, showing up at both ends of the pipeline.
+
+**8. A degradation rate of exactly zero was reachable, and it drove the demo.** The
+per-driver fallback chain ended in a `flat_zero` tier. Verstappen's SOFT cell at Hungary hit
+it: 2 observations, slope 0.0000 s/lap, r² = nan. The model believed his softs never wore,
+so they stayed ~1.5 s/lap faster than his hards at any age, and moving his lap-67 stop to
+lap 40 "gained" 52 seconds.
+
+Two faults, not one. The pool that should have caught it was gated on a driver-level
+identifiability flag that only 2 of 20 drivers pass, so SOFT never entered it. And the pool
+was built from *fuel-confounded* pass-1 slopes — five drivers' SOFT estimates came out
+between −0.63 and −1.90 s/lap and were discarded by the positivity filter as noisy when they
+were merely confounded. Refit with the race-level fuel effect held fixed, **34 of 34 cells at
+Hungary are physically plausible**. Fixing it removed **36 seconds of pure artifact** from
+that headline number.
+
+Every existing guard passed while this was true, because they were all aggregates: the
+fallback-fraction ceiling sat at 40% while Hungary passed at 19% with one catastrophic cell.
+**An aggregate cannot catch a local catastrophe.** The guard is now per cell, and zero is
+unreachable as a value *and* as a provenance.
+
+**9. The uncertainty band was mostly measuring its own draw order.** A counterfactual and its
+baseline were paired by seed, but once a decision changes a lap time the two runs consume the
+generator out of step, so every subsequent draw differs. Keying every random quantity on
+`(seed, driver, lap, channel)` instead — common random numbers — made the p10–p90 band on the
+demo candidate **17.9s wide → 1.29s**, on an effect of 0.3s. It had been reporting noise about
+noise. A stronger invariant came free: the no-op equivalence is now asserted byte-for-byte
+*with noise on*.
+
+**10. Position 0 is not a position.** FastF1 writes `0` for a car's retirement lap, where it
+stops part-way round with no classified place. Plotted as a position it sorts to the *front*,
+so the lap-scrubber would have shown a retired car leading the race. Three cases across the
+catalogue, caught by a range assertion on generated files rather than by anything visual.
+
+### Design notes worth stealing
+
+**Never let an integer be a y coordinate.** Finishing position looks like the obvious y axis
+for a tree of alternate outcomes. It is an integer over ~20 values, so branches that finish
+in the same place land on exactly the same line — 13 nodes collapsed onto 4 rows, paths and
+labels overlapping. Net effect in seconds is continuous, so exact collisions are rare and
+*near*-collisions are meaningful: two branches drawn close together really did cost the same.
+
+**The y-scale swallowed the signal four separate times**, in four different ways: an
+auto-scaled floor-pinned comparison, a pit-lane transient setting the range, gap-to-leader
+being floored at zero for a race leader, and finally a tree axis set by its own outlier.
+Each was found by opening the page, never by a test. The fixes are all in
+[`DECISIONS.md`](DECISIONS.md) — robust MAD range with overflow markers, a delta on
+cumulative time rather than gap, and a symmetric-log tree axis.
+
+**Two bugs produced plausible output with an inverted conclusion**, which is the class worth
+fearing. A candidate count of `14` clipped by an SVG's right edge rendered as `1`, making
+every driver look equally hopeless — the precise opposite of what that panel exists to show.
+And a tree that branched on the candidate *nearest* reality, rather than the best defensible
+one, drew nineteen sub-second branches piled on the zero rule and said nothing at all. Neither
+would fail a test; both were caught by comparing what was drawn against what was in the file.
+
 ---
 
 ## Architecture
@@ -268,20 +356,35 @@ vitest. No LLM in the simulation path; no deep learning.
 
 ## Running it
 
+**With Docker — the interface, one command:**
+
+```bash
+docker compose up web                  # http://localhost:8080
+```
+
+**From source:**
+
 ```bash
 # Backend
 python -m pip install -r backend/requirements.txt
 cd backend
-python -m pytest                       # 159 tests
+python -m pytest                       # 186 tests
 python scripts/run_validation.py       # regenerates VALIDATION.md
 python scripts/held_out_check.py       # held-out extrapolation check
-python scripts/export_fixture.py       # regenerates the frontend fixture
+python scripts/build_fixtures.py       # regenerates all 138 fixtures (~12 min)
 
 # Frontend
 cd frontend && npm install
 npm run dev                            # http://localhost:5173
-npm test                               # 10 tests
+npm test                               # 50 tests
 ```
+
+`docker compose run --rm backend <command>` runs any of the backend scripts in a
+container, with the FastF1 cache and the fixture directory mounted from the host.
+
+`?treelab` on the dev server opens the tree layout harness — fabricated numbers,
+used to test legibility at depths the app does not ship. It is not reachable from
+any control in the interface.
 
 Parameter fits are reproducible and drift-guarded: `scripts/fit_noise_autocorrelation.py`
 and `scripts/fit_min_following_gap.py` both re-fit from data and fail loudly if the
@@ -301,24 +404,38 @@ with every retraction preserved in place rather than edited away:
 - [x] Phase 3 — Simulator + validation ⚠️ hard gate (passes under §8.3.1)
 - [x] Phase 4 — Counterfactual engine (`ChangePitLap`, `AddPitStop`)
 - [~] Phase 5 — API *(deferred, see below)*
-- [~] Phase 6 — Frontend core (GapChart, StrategyTimeline, DecisionPanel, Classification)
-- [ ] Phase 7 — Multiverse tree
-- [ ] Phase 8 — Polish
+- [x] Phase 6 — Frontend core (GapChart, StrategyTimeline, DecisionPanel, Classification)
+  - [x] 6.1 — Delta plotting with a robust scale
+  - [x] 6.2 — Whole catalogue precomputed, lazily loaded
+  - [x] 6.3 — Drag the pit stop; the slider is gone
+  - [x] 6.4 — Lap scrubbing, order read per lap
+  - [x] 6.5 — The decision space as small multiples
+- [x] Phase 7 — Multiverse tree
+- [~] Phase 8 — Finish *(this section, Docker Compose; demo GIF outstanding — see below)*
 
 **The API was deferred deliberately, and the interaction loop is complete without it.**
-The frontend renders real simulations — real 2019 Hungary lap data, real fitted parameters,
-a real 60-seed counterfactual ensemble — precomputed by
-`backend/scripts/export_fixture.py` through the same pipeline functions the API will call.
-Every candidate pit lap's strategy consequence is precomputed the same way, so the
-decision slider responds instantly and correctly. What the API adds is running a *new*
-ensemble for a lap that wasn't precomputed; it does not add correctness, and swapping the
-fixture for an endpoint is a data-source change rather than a rewrite. Given the choice
-between an API serving an unvalidated simulator and a validated simulator behind a
-fixture, the second is the more honest artifact.
+`backend/scripts/build_fixtures.py` precomputes the *entire* decision space through the same
+pipeline functions the API would call: **8,085 candidate decisions across 5 races and 133
+driver-stops, 485,100 simulations, in 12 minutes on 10 workers**, written as 138 files
+totalling 33.8MB. Selecting a race fetches one base file (45–64KB); selecting a driver-stop
+fetches exactly one candidate file (median 249KB, max 466KB). Moving the pit stop costs no
+network at all — every candidate's ensemble is already open.
+
+So the API would add exactly one thing: an ensemble for a decision type that isn't
+precomputed. It does not add correctness, and swapping fixtures for an endpoint is a
+data-source change rather than a rewrite. Given the choice between an API serving an
+unvalidated simulator and a validated simulator behind precomputed fixtures, the second is
+the more honest artifact.
+
+**The demo GIF is not yet recorded.** The interaction it should show is the pit-stop drag:
+grab the tick on the alternate stint bar, pull it away from the real lap, and watch the
+ochre beyond-evidence hatch grow from nothing as the decision leaves the data. Everything
+needed is in the repo — `npm run dev` and drag — but a recorded capture is a manual step
+that has not been done, and this section will keep saying so until it has been.
 
 Deliberately **not** implemented, with reasons: `RemovePitStop` (lengthens a stint past
 anything observed — the catalogue's longest sample is 42 laps, a one-stop needs 60+),
-`ChangeCompound` (61% prior-dominated, so it would answer from the prior rather than from
+`ChangeCompound` (~61% prior-dominated, so it would answer from the prior rather than from
 the driver's data).
 
 ## License

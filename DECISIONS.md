@@ -3777,3 +3777,48 @@ compressed. Ticks are drawn at true values so the uneven spacing *is* the
 announcement that the axis is compressed, and the caption names the scale and the
 sign convention, since an axis where negative means faster needs saying rather
 than implying.
+
+
+### 2026-08-06 — Phase 8: auditing the README against the branch
+
+Spec 8: "Verify the default branch contains everything and that the README's
+claims match what's on it." Doing that as an audit rather than a formality turned
+up four things.
+
+**`docker compose up` would have failed.** The committed compose file declared a
+backend service running `uvicorn pitwall.api.main:app` — a module that does not
+exist, because Phase 5's API was deliberately deferred. It was written during the
+Phase 0 scaffold against a plan, and never revisited when the plan changed. The
+backend `Dockerfile`'s `CMD` had the same problem. Both now say what they are
+actually for: `web` serves the interface, and `backend` is a one-shot container
+for reproducing artifacts, run under a `tools` profile so `up` never starts it.
+Not verified by running it — Docker is not available in this environment — so
+that is stated rather than implied.
+
+**Two test counts and three fixture figures were stale.** README said 159 backend
+/ 10 frontend tests; actual 186 / 50. It described the frontend as fed by
+`export_fixture.py`; it is fed by `build_fixtures.py`, 138 files. My own first
+draft of the replacement then said "98 driver-stops", which was the *old*
+per-driver count — 133 is right after the per-stop split. Caught by recomputing
+every number from the files rather than from memory.
+
+**The README conflated tyre age with stint length, in the paragraph about
+conflating tyre age with stint length.** It said moving VER's Hungary stop
+earlier "pushes the following soft stint to 23 laps against the 6 he ran". 23 is
+the tyre *age*; the stint is 20 laps. Exactly the Phase 5 bug (finding 5),
+reproduced in prose describing that bug. Re-verified against the current fixture
+and rewritten: lap 67 → 50 reaches soft age 23 against 6 observed, 17 laps beyond
+evidence; 67 → 68 reaches hard age 43 against 42.
+
+**The 61% prior-dominated figure re-checks at 62%, by a method I could not
+reconcile with the original.** First measured as 66 of 109 adjacent-compound
+gaps at the 0.15s floor; a fresh count after the degradation refit gives 57 of
+92. The denominators differ, so the two passes enumerate pairs differently and
+the original computation was not committed as a script. The conclusion is
+identical and robust either way, so the README now cites both counts and says
+why they differ, rather than silently replacing one number with another or
+claiming a reproduction that isn't one. If that figure ever needs to be load-
+bearing, it needs a committed script first.
+
+**Still outstanding:** the demo GIF. The README says so in the status section
+rather than shipping a placeholder.

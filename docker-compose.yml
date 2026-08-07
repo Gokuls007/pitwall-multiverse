@@ -1,21 +1,56 @@
+# Pit Wall Multiverse — one command to a running interface.
+#
+#   docker compose up web       # the interface, http://localhost:8080
+#
+# That is the whole application right now. The API is deliberately deferred (see
+# README), and the frontend renders precomputed real simulations rather than
+# calling a backend at runtime.
+#
+# This file previously declared a `backend` service running
+# `uvicorn pitwall.api.main:app` — a module that does not exist, because Phase 5
+# was deferred. `docker compose up` would have failed. It was written during the
+# Phase 0 scaffold against a plan, and never revisited once the plan changed.
+#
+# So the backend service is now what it actually is: a one-shot container for
+# reproducing the artifacts, not a server. "You can rebuild everything I claim"
+# matters more here than a spare HTTP process.
+#
+#   docker compose run --rm backend python -m pytest -q
+#   docker compose run --rm backend python scripts/run_validation.py
+#   docker compose run --rm backend python scripts/build_fixtures.py
+#
+# Fixtures are written through a host mount, so rebuilding `web` afterwards picks
+# them up.
+
 services:
+  web:
+    build:
+      # Repo root: frontend/Dockerfile copies frontend/ from here.
+      context: .
+      dockerfile: frontend/Dockerfile
+    ports:
+      - "8080:80"
+
+  # Not started by `docker compose up` — it has nothing to serve.
   backend:
     build:
       context: .
       dockerfile: backend/Dockerfile
-    ports:
-      - "8000:8000"
-    environment:
-      - FASTF1_CACHE_DIR=/app/data/cache
+    working_dir: /app/backend
+    command: ["python", "-m", "pytest", "-q"]
     volumes:
-      # Fitted params are baked into the image; mount cache read-only if present.
-      - ./data/fitted:/app/data/fitted:ro
+      # Source and fixtures mounted from the host so a regeneration lands in the
+      # working tree rather than inside a discarded container. `build_fixtures.py`
+      # resolves its output as <repo>/frontend/src/fixtures/races, which is
+      # /app/frontend/src/fixtures/races in the image layout.
+      - ./backend:/app/backend
+      - ./frontend/src/fixtures:/app/frontend/src/fixtures
+      # FastF1's HTTP cache: ingestion is the only step that touches the network,
+      # and it should not re-download a season on every run.
+      - fastf1-cache:/root/.fastf1
+    environment:
+      PYTHONUNBUFFERED: "1"
+    profiles: ["tools"]
 
-  frontend:
-    build:
-      context: .
-      dockerfile: frontend/Dockerfile
-    ports:
-      - "5173:80"
-    depends_on:
-      - backend
+volumes:
+  fastf1-cache:

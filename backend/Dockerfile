@@ -10,6 +10,10 @@ COPY backend /app/backend
 COPY data/fitted /app/data/fitted
 
 ENV PYTHONPATH=/app/backend
-EXPOSE 8000
+WORKDIR /app/backend
 
-CMD ["uvicorn", "pitwall.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# NOT a server. The CMD here used to be `uvicorn pitwall.api.main:app`, written
+# during the Phase 0 scaffold against a plan that changed: Phase 5's API was
+# deliberately deferred and that module does not exist, so the image could not
+# start. It is now what it is actually for — reproducing the artifacts.
+CMD ["python", "-m", "pytest", "-q"]
