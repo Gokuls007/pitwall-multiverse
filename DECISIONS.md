@@ -3877,3 +3877,22 @@ from shell to build tool intact while its meaning changed.
 
 `base` defaults to `"/"` so `npm run dev` and any root-domain host keep working
 untouched; only the workflow sets the subpath.
+
+
+**Postscript — the first Pages run failed, and where it failed is informative.**
+Every step passed except site creation: install, typecheck, the 50 frontend
+tests, the build, and the asset-path verification (≥130 emitted JSON assets, the
+subpath prefix on a real `__base` fixture URL and on `index.html`'s script tag)
+all went green on a Linux runner. So the `base` configuration is now verified by
+CI independently of my local check, which was the part most likely to be wrong.
+
+`actions/configure-pages` with `enablement: true` then failed: the workflow token
+cannot create a Pages site that has never existed. That flag was there precisely
+to avoid needing a settings click, and it did not achieve it, so it is removed
+rather than left as a step that fails for a reason its log does not make obvious.
+Pages needs switching on once — Settings → Pages → Source: GitHub Actions — after
+which the existing workflow deploys on every push to main.
+
+The README says that, and still does not print a live URL. Same rule as the
+compose file: a link that 404s is a false claim, and being one settings click
+away from true does not make it true.

@@ -12,9 +12,11 @@ where earlier versions of them were quietly wrong.
 > Not a race-outcome predictor, a telemetry dashboard, or a sim-racing game. It answers the
 > question fans actually argue about: *what if they'd pitted earlier?*
 
-*(A Pages deploy is configured in `.github/workflows/pages.yml`; the live link goes here once
-the first run is confirmed green. An unverified URL is the same class of claim as an unrun
-command, so it is not printed as one.)*
+*(A Pages deploy is configured in [`.github/workflows/pages.yml`](.github/workflows/pages.yml)
+and its build, tests and asset-path checks pass in CI. It needs **Settings → Pages → Source:
+GitHub Actions** switched on once — the workflow token cannot create the site itself. The live
+link goes here after the first green run: an unverified URL is the same class of claim as an
+unrun command, so it is not printed as one until it is one.)*
 
 ---
 

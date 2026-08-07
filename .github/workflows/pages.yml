@@ -77,11 +77,13 @@ jobs:
           grep -q "src=\"${base}assets/index-" dist/index.html
           echo "asset paths OK"
 
+      # Requires Pages to be switched on once, with Settings -> Pages -> Source
+      # set to "GitHub Actions". `enablement: true` was tried here to avoid that
+      # click and does not work on this repo: the workflow token cannot create
+      # the site, so the step failed with everything before it green. Removed
+      # rather than left in as a step that fails for a reason the log does not
+      # make obvious.
       - uses: actions/configure-pages@v5
-        with:
-          # Create the Pages site if it does not exist, so deploying does not
-          # depend on a settings click having happened first.
-          enablement: true
       - uses: actions/upload-pages-artifact@v3
         with:
           path: frontend/dist
