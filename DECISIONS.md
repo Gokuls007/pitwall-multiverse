@@ -3810,15 +3810,32 @@ reproduced in prose describing that bug. Re-verified against the current fixture
 and rewritten: lap 67 → 50 reaches soft age 23 against 6 observed, 17 laps beyond
 evidence; 67 → 68 reaches hard age 43 against 42.
 
-**The 61% prior-dominated figure re-checks at 62%, by a method I could not
-reconcile with the original.** First measured as 66 of 109 adjacent-compound
-gaps at the 0.15s floor; a fresh count after the degradation refit gives 57 of
-92. The denominators differ, so the two passes enumerate pairs differently and
-the original computation was not committed as a script. The conclusion is
-identical and robust either way, so the README now cites both counts and says
-why they differ, rather than silently replacing one number with another or
-claiming a reproduction that isn't one. If that figure ever needs to be load-
-bearing, it needs a committed script first.
+**The 61% prior-dominated figure: enumeration identified, and it does not
+matter.** First measured as 66 of 109 adjacent-compound gaps at the 0.15s floor;
+a re-check after the degradation refit gave 57 of 92, and the differing
+denominators meant I could not initially say which enumeration was right.
+
+Found it: the question is whether a driver who ran SOFT and HARD but no MEDIUM
+contributes a pair. Counting only pairs adjacent in the full SOFT/MEDIUM/HARD
+ordering gives 92; counting pairs adjacent among the compounds a driver
+*actually ran* gives 104, which is within five of the original's 109 (the
+remainder being drivers now excluded for insufficient data).
+
+The useful part: **both enumerations give 62%** — 57/92 and 65/104. So the
+figure is insensitive to the choice, and the 61% → 62% move is a real if tiny
+shift from the degradation refit rather than an artifact of counting. The README
+now states 62% with the primary denominator and notes both. Still worth a
+committed script if it ever becomes load-bearing.
 
 **Still outstanding:** the demo GIF. The README says so in the status section
 rather than shipping a placeholder.
+
+
+**Postscript — the compose file is marked untested, and that is deliberate.**
+Docker is unavailable in this environment, so `docker compose up web` is correct
+by inspection against the real build steps (the frontend Dockerfile's context,
+the backend's `PYTHONPATH` and output paths) but has not been run. Every other
+claim in the README is measured. Rather than let one unverified instruction sit
+among them looking identical, the README carries an explicit warning callout on
+that block. An unrun command in a README is a claim; this project has spent too
+long being careful about claims to break the habit on the last file.

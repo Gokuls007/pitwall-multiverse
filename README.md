@@ -180,7 +180,7 @@ claim is narrower than it sounds, so here it is in full.
 | `fuel_effect_s_per_lap` | **Fitted** (pooled cross-driver) — distinguishable from the prior by cluster-robust CI on only 1 of 5 races |
 | `base_pace_s` | **Fitted** for most drivers; teammate/field-median fallback for a few per race |
 | `linear_deg_s_per_lap` (tyre wear) | **Fitted** for 66–95% of driver/compound cells; pooled or flat fallback for the rest, all tracked in `tyre_cell_provenance` |
-| `base_offset_s` separation | **Prior-dominated** — ~61% of adjacent-compound gaps sit at exactly the declared 0.15s floor (66/109 when first measured; 57/92 on a re-check after the degradation refit — the two passes enumerate pairs slightly differently, the conclusion does not move) |
+| `base_offset_s` separation | **Prior-dominated** — **62%** of adjacent-compound gaps sit at exactly the declared 0.15s floor (65/104), re-measured after the degradation refit and unchanged at 57/92 under a stricter pair enumeration. First measured at 61% (66/109) before the refit |
 | `pit_lane_loss_s` | **Fitted** from real in/out-lap timing (downstream of the pace model, so it inherits its bias) |
 | `dirty_air` | **Fitted** from pooled cross-race residuals: max penalty 1.290s [0.846, 1.850], decay 0.864s [0.564, 1.494] (clustered bootstrap) |
 | `overtake_difficulty` | **Fitted**, acknowledged noisy single-race estimate |
@@ -362,6 +362,11 @@ vitest. No LLM in the simulation path; no deep learning.
 docker compose up web                  # http://localhost:8080
 ```
 
+> ⚠️ **Untested.** Docker was not available in the environment this was written in,
+> so the compose file and Dockerfiles are correct by inspection against the real
+> build steps but have not been run. Everything else in this README is a measured
+> claim; this one is not, and it says so rather than looking like one.
+
 **From source:**
 
 ```bash
@@ -435,7 +440,7 @@ that has not been done, and this section will keep saying so until it has been.
 
 Deliberately **not** implemented, with reasons: `RemovePitStop` (lengthens a stint past
 anything observed — the catalogue's longest sample is 42 laps, a one-stop needs 60+),
-`ChangeCompound` (~61% prior-dominated, so it would answer from the prior rather than from
+`ChangeCompound` (62% prior-dominated, so it would answer from the prior rather than from
 the driver's data).
 
 ## License
