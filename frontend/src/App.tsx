@@ -977,7 +977,9 @@ export default function App() {
             node an extrapolation — only 3% of single decisions stay inside the evidence — and
             the layout stops being traceable past one level. Each branch forks at the lap its
             decision was taken; y is time gained or lost against reality, the same variable the
-            comparison chart plots.
+            comparison chart plots — on a symmetric-log scale, because one branch reaches −16.8s
+            while eighteen sit within a few seconds of zero, and a linear axis gives that cluster
+            a tenth of the height.
           </p>
           <div className="mt-2 overflow-x-auto">
             <MultiverseTree

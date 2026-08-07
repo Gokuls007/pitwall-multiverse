@@ -54,7 +54,7 @@ export type MultiverseTreeProps = {
   height?: number;
 };
 
-const MARGIN = { top: 16, right: 108, bottom: 22, left: 34 };
+const MARGIN = { top: 16, right: 132, bottom: 34, left: 40 };
 const WIDTH = 760;
 
 function cautionStroke(extrapolatedLaps: number, worst: number): string {
@@ -76,12 +76,42 @@ export default function MultiverseTree({
   const innerH = height - MARGIN.top - MARGIN.bottom;
   const worst = Math.max(1, ...nodes.map((n) => n.extrapolatedLaps));
 
-  // Symmetric about zero, so "reality" sits on the middle rule and gained time
-  // reads above it. Floored so a set of near-identical branches is not blown up
-  // to fill the height.
-  const extent = Math.max(2, ...nodes.map((n) => Math.abs(n.deltaS)));
+  /**
+   * Symmetric log about zero.
+   *
+   * A linear axis here is the fourth time the y-scale has swallowed the signal in
+   * this project. On 2019 Hungary one branch reaches -16.8s while eighteen of the
+   * twenty sit between -1.1s and +3.0s, so a linear extent set by the outlier
+   * gives the entire interesting cluster **12% of the axis** and the tree reads
+   * as "one big branch and a smudge".
+   *
+   * Symlog rather than clip-and-annotate (the pattern GapChart uses) because
+   * there is no transient to reject here: the outlier is a real, defensible
+   * answer and it belongs on the chart at its true rank. Symlog keeps every
+   * branch visible and ordered while giving the dense band room. It is linear
+   * within +/-LINEAR_S so small effects stay proportional to each other, and
+   * logarithmic beyond, so a big one costs a bounded amount of space.
+   *
+   * A compressed axis that does not announce itself is a lie about proportion, so
+   * the ticks below are drawn at their true positions and the caption names the
+   * scale.
+   */
+  const LINEAR_S = 2;
+  const extent = Math.max(LINEAR_S * 2, ...nodes.map((n) => Math.abs(n.deltaS)));
+  const warp = (v: number) => {
+    const a = Math.abs(v);
+    const scaled = a <= LINEAR_S ? a : LINEAR_S * (1 + Math.log(a / LINEAR_S));
+    return Math.sign(v) * scaled;
+  };
+  const warpedExtent = warp(extent);
   const x = (lap: number) => ((lap - 1) / Math.max(1, totalLaps - 1)) * innerW;
-  const y = (deltaS: number) => innerH / 2 + (deltaS / extent) * (innerH / 2 - 8);
+  const y = (deltaS: number) =>
+    innerH / 2 + (warp(deltaS) / warpedExtent) * (innerH / 2 - 8);
+
+  /** Ticks at real values, placed by the same warp, so the compression is visible. */
+  const yTicks = [-30, -15, -5, -2, -1, 0, 1, 2, 5, 15, 30].filter(
+    (v) => Math.abs(v) <= extent * 1.02,
+  );
 
   const byId = new Map(nodes.map((n) => [n.id, n]));
 
@@ -111,16 +141,37 @@ export default function MultiverseTree({
         className="block"
       >
         <g transform={`translate(${MARGIN.left},${MARGIN.top})`}>
+          {/* Seconds ticks, at their warped positions — uneven spacing IS the
+              statement that the axis is compressed. */}
+          {yTicks.map((tick) => (
+            <text
+              key={`yt-${tick}`}
+              x={-6}
+              y={y(tick) + 3}
+              textAnchor="end"
+              className="font-mono"
+              fontSize={8}
+              fill="#1A1917"
+              opacity={tick === 0 ? 0.6 : 0.35}
+            >
+              {tick > 0 ? `+${tick}` : tick}
+            </text>
+          ))}
           {/* Zero: reality. Same meaning as the comparison chart's zero rule. */}
           <line x1={0} x2={innerW} y1={y(0)} y2={y(0)} stroke="#1A1917" strokeWidth={1} opacity={0.25} />
-          <text x={-6} y={y(0) + 3} textAnchor="end" className="font-mono" fontSize={9} fill="#1A1917" opacity={0.5}>
-            0
-          </text>
-          <text x={-6} y={12} textAnchor="end" className="font-mono" fontSize={8} fill="#1A1917" opacity={0.35}>
-            gained
-          </text>
-          <text x={-6} y={innerH} textAnchor="end" className="font-mono" fontSize={8} fill="#1A1917" opacity={0.35}>
-            lost
+          {/* Direction and scale stated once under the axis rather than as
+              "gained"/"lost" markers at the extremes, which collided with the
+              outermost ticks — and a signed axis where negative means FASTER
+              needs saying explicitly, not implying. */}
+          <text
+            x={0}
+            y={innerH + 14}
+            className="font-mono"
+            fontSize={8}
+            fill="#1A1917"
+            opacity={0.45}
+          >
+            seconds vs reality — negative is time gained · symmetric log beyond ±2s
           </text>
 
           {/* Lap gridlines, so a fork's x position is readable as a lap. */}
@@ -131,7 +182,7 @@ export default function MultiverseTree({
                 <line x1={x(lap)} x2={x(lap)} y1={0} y2={innerH} stroke="#E8E4DA" strokeWidth={1} />
                 <text
                   x={x(lap)}
-                  y={innerH + 14}
+                  y={innerH + 26}
                   textAnchor="middle"
                   className="font-mono"
                   fontSize={9}

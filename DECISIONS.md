@@ -3762,3 +3762,18 @@ to move").
 reachable from any control in the app — fabricated numbers must never be one
 state change away from the real interface — and the page says so in its own
 header.
+
+**Postscript, same day — the tree's y-scale, fourth instance.** A linear axis was
+set by its own outlier: BOT's -16.8s against eighteen branches between -1.1s and
++3.0s gave the interesting cluster **12% of the height**, and the tree read as
+one big branch and a smudge. Fixed with a symmetric-log scale, linear within
+±2s so small effects stay proportional to each other and logarithmic beyond.
+
+Symlog rather than the clip-and-annotate pattern GapChart uses, because the two
+situations are different: there, the excursion is a pit-lane transient that would
+be misleading if it set the scale. Here the outlier is a real, defensible answer
+and belongs on the chart at its true rank — nothing should be rejected, only
+compressed. Ticks are drawn at true values so the uneven spacing *is* the
+announcement that the axis is compressed, and the caption names the scale and the
+sign convention, since an axis where negative means faster needs saying rather
+than implying.
