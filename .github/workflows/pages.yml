@@ -1,0 +1,97 @@
+# Deploy the interface to GitHub Pages.
+#
+# The whole frontend is static: Phase 5's API was deliberately deferred, and the
+# simulations are precomputed JSON assets committed to the repo. So there is
+# nothing to host but files, and a live URL is worth considerably more than
+# "clone and run" to anyone who will not clone.
+#
+# The one thing that can silently break this: fixtures are fetched through
+# `import.meta.glob(..., { query: "?url" })`, so their URLs are baked in at build
+# time from Vite's `base`. A wrong `base` loads the bundle fine, renders the page
+# shell, and 404s every fixture — a config failure that presents as a data
+# failure. Hence `VITE_BASE` below must match the Pages subpath exactly, trailing
+# slash included, and the smoke check afterwards asserts a real fixture URL
+# carries that prefix rather than trusting it.
+
+name: Deploy to Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never let two deploys race; let a newer push supersede an in-flight one.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install
+        working-directory: frontend
+        run: npm ci
+
+      # The deployed artifact should not be the first place a regression shows up.
+      - name: Typecheck and test
+        working-directory: frontend
+        run: |
+          npx tsc --noEmit
+          npm test
+
+      - name: Build
+        working-directory: frontend
+        env:
+          VITE_BASE: /${{ github.event.repository.name }}/
+        run: npm run build
+
+      - name: Verify asset paths and fixture emission
+        working-directory: frontend
+        run: |
+          base="/${{ github.event.repository.name }}/"
+          echo "expecting base: $base"
+
+          # Every fixture must be emitted as its own asset, not inlined into the
+          # bundle — that separation is the entire loading strategy.
+          count=$(ls dist/assets/*.json | wc -l)
+          echo "fixture assets: $count"
+          test "$count" -ge 130
+
+          # And their URLs must carry the subpath, or every fetch 404s on Pages
+          # while the page still renders its shell.
+          grep -q "\"${base}assets/[^\"]*__base-[^\"]*\.json\"" dist/assets/index-*.js
+          grep -q "src=\"${base}assets/index-" dist/index.html
+          echo "asset paths OK"
+
+      - uses: actions/configure-pages@v5
+        with:
+          # Create the Pages site if it does not exist, so deploying does not
+          # depend on a settings click having happened first.
+          enablement: true
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: frontend/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

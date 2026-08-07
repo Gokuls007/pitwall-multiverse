@@ -12,6 +12,10 @@ where earlier versions of them were quietly wrong.
 > Not a race-outcome predictor, a telemetry dashboard, or a sim-racing game. It answers the
 > question fans actually argue about: *what if they'd pitted earlier?*
 
+*(A Pages deploy is configured in `.github/workflows/pages.yml`; the live link goes here once
+the first run is confirmed green. An unverified URL is the same class of claim as an unrun
+command, so it is not printed as one.)*
+
 ---
 
 ## What the tool claims — and what it doesn't
@@ -247,9 +251,13 @@ rather than merely discouraged.
 alternative worth more than a couple of seconds that the model can also defend (Bottas,
 −16.8s from stopping on lap 8 rather than 5; Russell, −9.8s from lap 15 rather than 16).
 Eighteen sit between −1.1s and +3.0s. The arguments fans have about pit timing are, on this
-evidence, mostly arguments about noise. That is a more interesting result than any single
-counterfactual, and it is the kind of claim only a tool that enumerates the whole decision
-space can make.
+evidence, mostly arguments about noise.
+
+That result needs **both halves of this project**, which is why it isn't available elsewhere.
+Enumerating the whole decision space gives you a number. Knowing where each candidate stops
+being defensible gives you the answer. Either alone tells you nothing: a tool that simulates
+every alternative without validation produces twenty confident results, and a validated
+simulator that only answers one question at a time never sees the distribution.
 
 **7. Only 3% of the decision space is inside the model's own evidence.** 53 of those 1,580
 candidates keep every stint within a tyre age the driver actually reached. The rest
@@ -311,12 +319,22 @@ Each was found by opening the page, never by a test. The fixes are all in
 [`DECISIONS.md`](DECISIONS.md) — robust MAD range with overflow markers, a delta on
 cumulative time rather than gap, and a symmetric-log tree axis.
 
-**Two bugs produced plausible output with an inverted conclusion**, which is the class worth
-fearing. A candidate count of `14` clipped by an SVG's right edge rendered as `1`, making
-every driver look equally hopeless — the precise opposite of what that panel exists to show.
-And a tree that branched on the candidate *nearest* reality, rather than the best defensible
-one, drew nineteen sub-second branches piled on the zero rule and said nothing at all. Neither
-would fail a test; both were caught by comparing what was drawn against what was in the file.
+**The recurring failure was never bad arithmetic. It was plausible output with an inverted
+conclusion.** Four instances, and the pattern is worth naming precisely:
+
+| | looked like | actually was |
+|---|---|---|
+| A displayed tyre age | 25 | 28 — the car started on used rubber |
+| A candidate count clipped by an SVG edge | `1` | `14` — every driver read as equally hopeless |
+| A tree branching on the *nearest* defensible candidate | nineteen sub-second branches saying nothing | should have been the *best* defensible one |
+| This README, in the paragraph about tyre age vs stint length | "soft stint to 23 laps" | 23 is the tyre age; the stint is 20 laps |
+
+**Every one sat at a boundary between representations** — model to fixture, fixture to
+component, component to pixel, code to prose. A value survives each hop intact while its
+*meaning* shifts, and nothing on either side can detect it, because both sides are internally
+consistent. That is exactly why unit tests never catch this class and why comparing rendered
+output against source does. The last row is the proof that knowing the failure mode is not
+enough to avoid it: it was written one paragraph after describing it.
 
 ---
 
@@ -416,7 +434,7 @@ with every retraction preserved in place rather than edited away:
   - [x] 6.4 — Lap scrubbing, order read per lap
   - [x] 6.5 — The decision space as small multiples
 - [x] Phase 7 — Multiverse tree
-- [~] Phase 8 — Finish *(this section, Docker Compose; demo GIF outstanding — see below)*
+- [~] Phase 8 — Finish *(README, Docker Compose, Pages deploy; demo GIF outstanding)*
 
 **The API was deferred deliberately, and the interaction loop is complete without it.**
 `backend/scripts/build_fixtures.py` precomputes the *entire* decision space through the same

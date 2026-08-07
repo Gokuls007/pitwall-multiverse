@@ -3839,3 +3839,41 @@ claim in the README is measured. Rather than let one unverified instruction sit
 among them looking identical, the README carries an explicit warning callout on
 that block. An unrun command in a README is a claim; this project has spent too
 long being careful about claims to break the habit on the last file.
+
+
+### 2026-08-06 — Deploying it, and a Windows-only trap on the way
+
+The frontend is entirely static — the API was deferred and every simulation is a
+precomputed JSON asset — so Pages serves the real artifact rather than a
+demo build. A live URL is worth more than "clone and run" to anyone who will not
+clone, which is nearly everyone.
+
+**The failure mode this setup invites is unusually nasty.** Fixtures are fetched
+through `import.meta.glob(..., { query: "?url" })`, so their URLs are baked in at
+build time from Vite's `base`. Set `base` wrong and the bundle loads perfectly,
+the page renders its shell, and every fixture 404s — a *configuration* failure
+that presents as a *data* failure, on a project where "the data didn't load"
+would send someone straight to the wrong half of the codebase. So the workflow
+asserts it rather than assuming it: at least 130 emitted JSON assets, a real
+`__base` fixture URL carrying the subpath prefix, and the same prefix on the
+script tag in `index.html`.
+
+**Verified on a subpath before writing the workflow that claims it works.** Built
+with `VITE_BASE=/pitwall-multiverse/`, copied into a directory of that name,
+served over plain HTTP and opened. Result: the header, chart, tree and small
+multiples all render, and the network log shows **exactly two JSON fetches** —
+the 59.7KB base file and HAM's 265KB lap-48 candidate set. The per-stop loading
+strategy holds on a subpath host, which was the actual question.
+
+**A Git Bash trap worth recording.** `VITE_BASE=/pitwall-multiverse/ npm run
+build` on Windows produces
+`src="/Program Files/Git/pitwall-multiverse/assets/index-*.js"`: MSYS path
+conversion rewrites any argument that looks like an absolute POSIX path. The
+built site is broken in a way that greps for the intended prefix still *match*,
+because the mangled path contains it as a substring — my first check passed on a
+broken build. `MSYS_NO_PATHCONV=1` fixes it locally; CI runs on Linux and is
+unaffected. Another instance of the boundary pattern: the value survived the hop
+from shell to build tool intact while its meaning changed.
+
+`base` defaults to `"/"` so `npm run dev` and any root-domain host keep working
+untouched; only the workflow sets the subpath.
