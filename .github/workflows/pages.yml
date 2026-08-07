@@ -73,8 +73,21 @@ jobs:
 
           # And their URLs must carry the subpath, or every fetch 404s on Pages
           # while the page still renders its shell.
+          #
+          # The opening quote in each pattern is LOAD-BEARING, not decoration.
+          # Without it these are substring tests, and a substring test cannot
+          # tell "starts with the prefix" from "contains it somewhere": on Git
+          # Bash, MSYS path conversion turns VITE_BASE into
+          # "/Program Files/Git/pitwall-multiverse/", which *contains* the
+          # intended prefix and passes an unanchored grep on a completely broken
+          # build. That happened locally. Anchoring to the quote is what makes
+          # this a test of the right proposition. Do not "simplify" it away.
           grep -q "\"${base}assets/[^\"]*__base-[^\"]*\.json\"" dist/assets/index-*.js
           grep -q "src=\"${base}assets/index-" dist/index.html
+
+          # Jekyll drops underscore-prefixed paths, and this would fail only on
+          # the live host while every local and CI check passed.
+          test -f dist/.nojekyll
           echo "asset paths OK"
 
       # Requires Pages to be switched on once, with Settings -> Pages -> Source

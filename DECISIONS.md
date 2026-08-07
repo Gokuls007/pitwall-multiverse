@@ -3896,3 +3896,43 @@ which the existing workflow deploys on every push to main.
 The README says that, and still does not print a live URL. Same rule as the
 compose file: a link that 404s is a false claim, and being one settings click
 away from true does not make it true.
+
+
+### 2026-08-07 — Two insurance policies, one rule
+
+**Rule: verification by substring is verification of the wrong proposition.**
+This project has now produced it twice, months apart, in unrelated domains:
+
+- Phase 3: a race-screening script matched `"RED FLAG"` inside `"CHEQUERED FLAG"`
+  and screened out clean races.
+- Phase 8: a check that the deployed asset prefix was `/pitwall-multiverse/`
+  passed on a build where Git Bash had rewritten it to
+  `/Program Files/Git/pitwall-multiverse/` — a wrong path that *contains* the
+  right prefix.
+
+The second is the worse of the two, because the **verification** was fooled, not
+the code. A broken build reported green. A substring test cannot distinguish
+"starts with the prefix" from "contains it somewhere", so it silently tests a
+weaker proposition than the one intended.
+
+Checked rather than assumed which greps were affected: the CI check was already
+anchored — the opening `"` in `grep -q "\"${base}assets/..."` requires the quote
+immediately before the prefix, and it correctly rejects the mangled path when
+tested against both strings. The unanchored one was my ad-hoc local check. So
+nothing needed fixing, but the anchor was undocumented and is exactly the kind of
+character someone removes while tidying. It now carries a comment saying so.
+
+**`.nojekyll`, as belt and braces.** GitHub Pages runs Jekyll unless that file is
+present, and Jekyll drops underscore-prefixed paths. No asset here starts with one
+— the hashed names are `2019_hungarian__base-patyNE2t.json`, underscores in the
+middle — and the Actions publishing source should not invoke Jekyll at all. It is
+added anyway because the failure it prevents has a nasty shape: it would appear
+**only on the live host**, with the local build, the local subpath serve and the
+CI asset checks all green. Three environments passing and the fourth 404ing on
+files nobody re-checks. The cost is an empty file, and CI now asserts it reaches
+`dist/`.
+
+Which is also the standing instruction for after the Pages toggle: **open the
+network tab on the live URL**, not only in CI. Four faults in this project were
+caught by looking at rendered output against source, and the live host is the one
+environment that has never been looked at.

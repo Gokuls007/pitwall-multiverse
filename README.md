@@ -331,6 +331,15 @@ conclusion.** Four instances, and the pattern is worth naming precisely:
 | A tree branching on the *nearest* defensible candidate | nineteen sub-second branches saying nothing | should have been the *best* defensible one |
 | This README, in the paragraph about tyre age vs stint length | "soft stint to 23 laps" | 23 is the tyre age; the stint is 20 laps |
 
+**Verification by substring is verification of the wrong proposition.** Twice, months apart,
+in unrelated domains. A race-screening script matched `"RED FLAG"` inside `"CHEQUERED FLAG"`
+and screened out clean races. And a check that the deployed asset prefix was `/pitwall-multiverse/`
+passed on a build where Git Bash had rewritten it to `/Program Files/Git/pitwall-multiverse/` —
+which *contains* the prefix inside a wrong path. The second is the worse one, because the
+**verification** was fooled rather than the code: a broken build reported green. A substring
+test cannot distinguish "starts with" from "contains somewhere". Anchor it, or parse it — the
+CI check now anchors on the opening quote, with a comment saying the quote is load-bearing.
+
 **Every one sat at a boundary between representations** — model to fixture, fixture to
 component, component to pixel, code to prose. A value survives each hop intact while its
 *meaning* shifts, and nothing on either side can detect it, because both sides are internally
