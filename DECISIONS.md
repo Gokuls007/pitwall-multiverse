@@ -3620,3 +3620,79 @@ series answers a distinct question that was asked for. The identified lever, not
 taken here, is one file per *(driver, stop)* rather than per driver — the UI only
 ever shows one stop at a time, so a two-stop driver currently downloads twice what
 is displayed.
+
+### 2026-08-06 — Phase 6.5: the decision space as small multiples
+
+One row per (driver, real stop), one cell per candidate pit lap.
+
+**The V does not read as a V, and that is the finding.** The spec asks whether
+the V-shape is apparent without a caption. For this catalogue the honest answer
+is: only for some drivers, and *which* drivers is the interesting part.
+
+The extrapolation curve's minimum is at reality, but its **width** is a property
+of the driver:
+
+| | candidates | inside observed tyre age |
+|---|---|---|
+| 2019 Hungary HAM, lap-48 stop | 70 | **14** |
+| 2019 Hungary VER, lap-25 stop | 65 | **1** (reality itself) |
+| 2019 Hungary VER, lap-67 stop | 70 | **1** (reality itself) |
+
+HAM ran a compound in more than one stint, so his observed maximum tyre age
+exceeds any single stint's length and a band either side of reality stays inside
+the evidence — a flat-bottomed valley, plainly visible as a pale run. VER ran
+each compound exactly once, so every stint ended at its own observed maximum by
+construction and *any* shift in *any* direction leaves the evidence immediately.
+His rows are uniformly dark with a single notch at reality: a valley of zero
+width. The contrast between those two rows is legible without reading anything.
+
+That is the same compound-revisit property that decides whether a driver's fuel
+effect and degradation are separable at all — it is literally
+`DriverJointFit.is_identified`. **The drivers whose tyre models are best
+identified are exactly the drivers whose counterfactuals are defensible.** The
+encoding was not pushed toward a V; it shows what is there.
+
+Catalogue-wide headline, stated in the panel header: **53 of 1,580 candidates
+(3%) at Hungary stay inside observed tyre age.**
+
+**Two channels, because there are two failure modes.** Ochre saturation carries
+extrapolation depth, so `--caution` keeps meaning exactly one thing. A separate
+structural mark — a dot — carries "this answer is driven by something other than
+the tyre model". The case that demands it: 2019 Hungary BOT's lap-5 stop has
+**16 candidates inside observed tyre age and 30 flagged traffic-dominated**. On
+depth alone that row is the palest on the chart and reads as the safest thing
+available; with the second channel it is visibly the most heavily qualified.
+
+**One file per (driver, stop), not per driver.** A two-stop driver was
+downloading both stops' candidate sets to display one. Max file **615KB ->
+466KB**, median **375KB -> 248KB**, 138 files, 33.8MB. The overview costs no
+extra fetches at all: a compact `decisionSpace` summary (four numbers per
+candidate) lives on the shared base file, which grew ~34KB -> 58KB. Reading the
+detail files instead would have meant ~20 requests to draw twenty thumbnails,
+which is the opposite of what per-stop loading is for.
+
+**Three bugs, two of them mine and one caught only by looking.**
+
+*The count was clipped.* The right-hand "candidates inside the evidence" number
+was drawn 4px from the SVG's right edge, so a two-digit value lost its second
+digit: HAM's **14** rendered as **1**. Not a smaller number — the wrong one, and
+it happened to make every driver look equally hopeless, which is exactly the
+conclusion the panel exists to test. Found by comparing the rendered figure
+against the file.
+
+*The hoisted cells were taken from one candidate.* `meta.tyreCells` was built
+from `candidates[0]`, but a candidate's provenance only covers the compounds *it*
+runs, and moving a stop can drop a compound from the strategy entirely. Fourteen
+files had a candidate whose `fitReliance` named a compound absent from `meta` —
+its caveat would have silently vanished. Now unioned across the file's
+candidates, and asserted.
+
+*Switching driver cost two requests.* `stopLap` was state set from an effect, so
+after a driver change it briefly held the *previous* driver's stop and the fetch
+effect fired on that intermediate value — one request for a decision nobody had
+asked to see. Now derived synchronously from the file listing plus the user's
+choice, so there is one value per render and nothing intermediate to fetch. Only
+visible as a test asserting 2 and getting 3.
+
+**Also:** `availableStops` reads the stop list from the file listing, so the stop
+selector renders before any candidate file is fetched.

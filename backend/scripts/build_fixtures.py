@@ -686,6 +686,32 @@ def build_race(race_key: str, workers: int) -> dict:
         ages = [tyre_age[(driver, lap)] for lap in range(start, end + 1) if (driver, lap) in tyre_age]
         return (min(ages), max(ages)) if ages else (0, 0)
 
+    # --- decision-space summary, for the Phase 6.5 small multiples ---
+    #
+    # Four numbers per candidate: the lap, the net effect, how far past observed
+    # tyre age it runs, and a cause code. That is enough to draw every driver's
+    # decision space as a thumbnail, and it lives on the shared base file so the
+    # overview costs ZERO extra fetches. The alternative -- reading the detail
+    # files -- would mean fetching ~20 candidate files to render twenty
+    # thumbnails, which is the opposite of what per-driver loading is for.
+    #
+    # Cause codes: 0 plausible, 1 extrapolation, 2 traffic, 3 degenerate fit,
+    # 4 implausible with no identified cause.
+    cause_code = {None: 0, "extrapolation": 1, "traffic": 2, "degenerateFit": 3, "unexplained": 4}
+    decision_space: dict[str, dict[str, list[list[float]]]] = {}
+    for code, driver_candidates in sorted(by_driver.items()):
+        by_stop: dict[str, list[list[float]]] = defaultdict(list)
+        for candidate in sorted(driver_candidates, key=lambda c: (c["originalLap"], c["newLap"])):
+            by_stop[str(candidate["originalLap"])].append(
+                [
+                    candidate["newLap"],
+                    candidate["plausibility"]["finalDeltaS"],
+                    candidate["extrapolatedLaps"],
+                    cause_code[candidate["plausibility"]["cause"]],
+                ]
+            )
+        decision_space[code] = dict(by_stop)
+
     base = {
         "meta": {
             "raceKey": race_key,
@@ -729,6 +755,7 @@ def build_race(race_key: str, workers: int) -> dict:
         ],
         "realSeries": real_series,
         "realPositions": {driver: laps for driver, laps in sorted(real_positions.items())},
+        "decisionSpace": decision_space,
         "stints": [
             {
                 "driver": s.driver,
@@ -748,24 +775,42 @@ def build_race(race_key: str, workers: int) -> dict:
     base_path = OUT_DIR / f"{race_key}__base.json"
     base_path.write_text(json.dumps(base, separators=(",", ":")), encoding="utf-8")
     written.append((base_path, base_path.stat().st_size))
-    for driver, candidates in sorted(by_driver.items()):
-        candidates.sort(key=lambda c: (c["originalLap"], c["newLap"]))
+    # One file per (driver, STOP), not per driver. The UI only ever shows one stop
+    # at a time, so a two-stop driver was downloading twice what was displayed --
+    # visible to anyone who opens the network tab, and it gets worse as drivers
+    # with three stops enter the catalogue.
+    per_stop: dict[tuple[str, int], list[dict]] = defaultdict(list)
+    for driver, driver_candidates in by_driver.items():
+        for candidate in driver_candidates:
+            per_stop[(driver, candidate["originalLap"])].append(candidate)
+
+    for (driver, stop_lap), candidates in sorted(per_stop.items()):
+        candidates.sort(key=lambda c: c["newLap"])
 
         # Hoist the per-driver constants out of every candidate. The tyre-cell
         # statistics and the plausibility bound are identical on all ~140 of a
         # driver's candidates; repeating them was 7.5% of the payload for no
         # information. Each candidate keeps only what varies: `fitReliance`, how
         # many post-fork laps that candidate runs on each compound.
-        tyre_cells = candidates[0].pop("tyreCells", []) if candidates else []
-        bound_s = candidates[0]["plausibility"].get("boundS", 0.0) if candidates else 0.0
+        # UNION across candidates, not just the first one's list. A candidate's
+        # provenance only covers the compounds *it* runs, and moving a stop can
+        # drop a compound from the strategy entirely — so taking the first
+        # candidate's list left later candidates referencing a cell that was not
+        # in `meta`, and their caveat would have silently vanished. Caught by
+        # asserting every `fitReliance` key resolves.
+        tyre_cells: dict[str, dict] = {}
+        bound_s = 0.0
         for candidate in candidates:
-            candidate.pop("tyreCells", None)
-            candidate["plausibility"].pop("boundS", None)
+            for cell in candidate.pop("tyreCells", []):
+                tyre_cells.setdefault(cell["compound"], cell)
+            bound_s = max(bound_s, candidate["plausibility"].pop("boundS", 0.0))
+        tyre_cells_list = [tyre_cells[k] for k in sorted(tyre_cells)]
 
         payload = {
             "meta": {
                 "raceKey": race_key,
                 "driver": driver,
+                "stopLap": stop_lap,
                 "year": snapshot.year,
                 "eventName": snapshot.event_name,
                 "circuit": snapshot.circuit,
@@ -780,14 +825,14 @@ def build_race(race_key: str, workers: int) -> dict:
                 },
                 "excludedFromGate": EXCLUDED_FROM_GATE.get(race_key),
                 # Per-driver constants, hoisted out of every candidate.
-                "tyreCells": tyre_cells,
+                "tyreCells": tyre_cells_list,
                 "plausibilityBoundS": bound_s,
                 "paramFingerprint": fingerprint,
                 "source": "backend/scripts/build_fixtures.py",
             },
             "candidates": candidates,
         }
-        path = OUT_DIR / f"{race_key}__{driver}.json"
+        path = OUT_DIR / f"{race_key}__{driver}__s{stop_lap}.json"
         path.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
         written.append((path, path.stat().st_size))
 

@@ -68,7 +68,12 @@ describe("App", () => {
     );
 
     // HAM, not VER: the opening driver is whoever has a defensible candidate.
-    expect(requested().sort()).toEqual(["2019_hungarian__HAM.json", "2019_hungarian__base.json"]);
+    // Per (driver, STOP), not per driver: HAM has two real stops and only the one
+    // being shown is fetched.
+    expect(requested().sort()).toEqual([
+      "2019_hungarian__HAM__s48.json",
+      "2019_hungarian__base.json",
+    ]);
   });
 
   it("fetches exactly one additional file when the driver changes", async () => {
@@ -78,9 +83,11 @@ describe("App", () => {
 
     // A driver other than the one already open, so the fetch count is meaningful.
     await userEvent.selectOptions(screen.getByLabelText(/^driver$/i), "VER");
-    await waitFor(() => expect(fetchSpy.mock.calls.length).toBe(before + 1));
+    await waitFor(() => expect(requested().at(-1)).toContain("__VER__"));
+    // Exactly one more file: the new driver's *selected stop*, nothing else.
+    expect(fetchSpy.mock.calls.length).toBe(before + 1);
 
-    expect(requested().at(-1)).toBe("2019_hungarian__VER.json");
+    expect(requested().at(-1)).toMatch(/^2019_hungarian__VER__s\d+\.json$/);
     // No re-fetch of the base file: the field data is shared across drivers.
     expect(requested().filter((n) => n.endsWith("__base.json"))).toHaveLength(1);
   });
@@ -304,7 +311,9 @@ describe("lap scrubbing under prefers-reduced-motion", () => {
 describe("lap scrubbing (Phase 6.4)", () => {
   it("parks on the whole race until scrubbed, then reads an order off stored state", async () => {
     render(<App />);
-    await waitFor(() => expect(screen.getByTestId("playhead")).toBeInTheDocument());
+    // Wait for the candidate file, not just the playhead: the playhead renders
+    // from the axis alone and is present before any data has arrived.
+    await waitFor(() => expect(screen.getByText(/instead of lap/i)).toBeInTheDocument());
 
     // Parked: the finish-order distribution is shown, not a single lap's order.
     expect(screen.getByText(/real vs alternate/i)).toBeInTheDocument();
@@ -327,7 +336,7 @@ describe("lap scrubbing (Phase 6.4)", () => {
     // real order would put two cars in one place, so the alternate is reported as
     // a displacement and the caveat is stated in the UI rather than assumed.
     render(<App />);
-    await waitFor(() => expect(screen.getByTestId("playhead")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/instead of lap/i)).toBeInTheDocument());
     screen.getByTestId("playhead").focus();
     await userEvent.keyboard("{End}");
     await waitFor(() => expect(screen.getByText(/order on lap/i)).toBeInTheDocument());
@@ -337,7 +346,9 @@ describe("lap scrubbing (Phase 6.4)", () => {
 
   it("keyboard-operates on the same conventions as the pit drag", async () => {
     render(<App />);
-    await waitFor(() => expect(screen.getByTestId("playhead")).toBeInTheDocument());
+    // After the fixture lands: the lap window narrows to the fork once a
+    // candidate is selected, so reading the bounds earlier reads the wrong ones.
+    await waitFor(() => expect(screen.getByText(/instead of lap/i)).toBeInTheDocument());
     const head = screen.getByTestId("playhead");
     const now = () => Number(head.getAttribute("aria-valuenow"));
     const min = Number(head.getAttribute("aria-valuemin"));
@@ -358,7 +369,7 @@ describe("lap scrubbing (Phase 6.4)", () => {
     // "The order on lap 47" of a race that is no longer loaded is not a fact
     // about anything, so the playhead parks on any change of race/driver/stop.
     render(<App />);
-    await waitFor(() => expect(screen.getByTestId("playhead")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/instead of lap/i)).toBeInTheDocument());
     screen.getByTestId("playhead").focus();
     await userEvent.keyboard("{Home}");
     await waitFor(() => expect(screen.getByText(/order on lap/i)).toBeInTheDocument());
@@ -371,5 +382,78 @@ describe("lap scrubbing (Phase 6.4)", () => {
     render(<App />);
     await waitFor(() => expect(screen.getByTestId("playhead")).toBeInTheDocument());
     expect(screen.getByRole("button", { name: /^play$/i })).toBeInTheDocument();
+  });
+});
+
+describe("the decision space as small multiples (Phase 6.5)", () => {
+  it("draws every driver's decision space from the base file, with no extra fetches", async () => {
+    // The overview must not cost one request per thumbnail. The summary lives on
+    // the shared base file precisely so twenty rows are free.
+    render(<App />);
+    await waitFor(() => expect(screen.getByText(/every decision available/i)).toBeInTheDocument());
+    const after = requested().length;
+
+    expect(screen.getByLabelText(/decision space per driver/i)).toBeInTheDocument();
+    // Only the base file and the one selected candidate set.
+    expect(after).toBe(2);
+  });
+
+  it("reports how much of the decision space is inside the evidence", async () => {
+    render(<App />);
+    await waitFor(() => expect(screen.getByText(/every decision available/i)).toBeInTheDocument());
+    // The honest headline for this catalogue: almost every counterfactual it can
+    // offer is extrapolating, and the panel says so rather than implying breadth.
+    expect(screen.getByText(/stay inside observed tyre age/i)).toBeInTheDocument();
+  });
+
+  it("uses a second channel for traffic, so ochre keeps meaning one thing", async () => {
+    // Shading by extrapolation depth alone would leave BOT's traffic-driven
+    // answers looking benign: at Hungary his lap-5 stop has 16 candidates inside
+    // observed tyre age and 30 that are traffic-dominated, so the pale row would
+    // read as safe.
+    render(<App />);
+    await waitFor(() => expect(screen.getByText(/every decision available/i)).toBeInTheDocument());
+
+    const svg = screen.getByLabelText(/decision space per driver/i);
+    expect(svg.querySelectorAll("circle").length).toBeGreaterThan(0);
+    expect(screen.getByText(/driven by traffic, not tyres/i)).toBeInTheDocument();
+    expect(screen.getByText(/laps beyond evidence/i, { selector: "span" })).toBeInTheDocument();
+  });
+
+  it("shows the contrast between a driver with a defensible middle and one without", async () => {
+    // This is the finding the small multiples are for. HAM revisited a compound,
+    // so his observed maximum exceeds any single stint and a band of candidates
+    // either side of reality stays inside the evidence. VER ran each compound
+    // once, so every stint ended at its own observed maximum by construction and
+    // the defensible region has ZERO width. The per-row count states it.
+    render(<App />);
+    await waitFor(() => expect(screen.getByText(/every decision available/i)).toBeInTheDocument());
+
+    const svg = screen.getByLabelText(/decision space per driver/i);
+    const labels = [...svg.querySelectorAll("text")].map((t) => t.textContent ?? "");
+    expect(labels).toContain("HAM L48");
+    expect(labels).toContain("VER L67");
+    // Both stops are rows in their own right, because they are separate decisions.
+    expect(labels).toContain("VER L25");
+  });
+
+  it("selecting a cell loads that driver and stop", async () => {
+    render(<App />);
+    await waitFor(() => expect(screen.getByText(/instead of lap/i)).toBeInTheDocument());
+    expect((screen.getByLabelText(/^driver$/i) as HTMLSelectElement).value).toBe("HAM");
+
+    const svg = screen.getByLabelText(/decision space per driver/i);
+    // A cell belonging to VER's lap-67 row.
+    const verRow = [...svg.querySelectorAll("g")].find((g) =>
+      [...g.querySelectorAll("text")].some((t) => t.textContent === "VER L67"),
+    );
+    const cell = verRow?.querySelector("rect");
+    expect(cell).toBeTruthy();
+    await userEvent.click(cell!);
+
+    await waitFor(() =>
+      expect((screen.getByLabelText(/^driver$/i) as HTMLSelectElement).value).toBe("VER"),
+    );
+    expect((screen.getByLabelText(/stop to move/i) as HTMLSelectElement).value).toBe("67");
   });
 });

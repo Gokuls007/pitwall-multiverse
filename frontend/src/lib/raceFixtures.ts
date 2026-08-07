@@ -127,6 +127,8 @@ export type DriverFixture = {
     nSeeds: number;
     realFinishPosition: number | null;
     realPitLaps: number[];
+    /** The real pit stop this file's candidates all move. */
+    stopLap: number;
     observedMaxTyreAge: Record<string, number>;
     /** This driver's degradation cells, once rather than on every candidate. */
     tyreCells: FitCell[];
@@ -156,8 +158,8 @@ const urlByKey = new Map<string, string>(
 
 const cache = new Map<string, Promise<unknown>>();
 
-export function fixtureKey(raceKey: string, driver: string): string {
-  return `${raceKey}__${driver}`;
+export function fixtureKey(raceKey: string, driver: string, stopLap: number): string {
+  return `${raceKey}__${driver}__s${stopLap}`;
 }
 
 /**
@@ -175,11 +177,29 @@ export function availableRaces(): string[] {
 
 /** Drivers with a precomputed decision space for a race. */
 export function availableDrivers(raceKey: string): string[] {
+  return [
+    ...new Set(
+      [...urlByKey.keys()]
+        .filter((k) => k.startsWith(`${raceKey}__`))
+        .map((k) => k.split("__")[1])
+        .filter((driver) => driver !== BASE_SUFFIX),
+    ),
+  ].sort();
+}
+
+/**
+ * Real pit stops with a precomputed decision space for this driver.
+ *
+ * Files are keyed per *(driver, stop)*, not per driver: the UI shows one stop at a
+ * time, so a two-stop driver was downloading twice what was displayed.
+ */
+export function availableStops(raceKey: string, driver: string): number[] {
+  const prefix = `${raceKey}__${driver}__s`;
   return [...urlByKey.keys()]
-    .filter((k) => k.startsWith(`${raceKey}__`))
-    .map((k) => k.split("__")[1])
-    .filter((driver) => driver !== BASE_SUFFIX)
-    .sort();
+    .filter((k) => k.startsWith(prefix))
+    .map((k) => Number(k.slice(prefix.length)))
+    .filter((lap) => Number.isFinite(lap))
+    .sort((a, b) => a - b);
 }
 
 export type RaceBase = {
@@ -213,6 +233,15 @@ export type RaceBase = {
   realSeries: Record<string, [number, number][]>;
   /** driver -> [[lap, position], ...], straight off the ingested lap records. */
   realPositions: Record<string, [number, number][]>;
+  /**
+   * Every driver's whole decision space, compactly: driver -> stop lap ->
+   * `[newLap, finalDeltaS, extrapolatedLaps, causeCode]` per candidate.
+   *
+   * Lives on the shared base file so the Phase 6.5 overview costs no extra
+   * fetches — drawing twenty thumbnails from the detail files would mean twenty
+   * requests, which is the opposite of what per-stop loading is for.
+   */
+  decisionSpace: Record<string, Record<string, [number, number, number, number][]>>;
   stints: {
     driver: string;
     compound: string;
@@ -257,8 +286,43 @@ function fetchKey(key: string): Promise<unknown> {
  * Fetch one driver's decision space. Cached by key, so repeated selection of
  * the same driver costs nothing and never re-fetches.
  */
-export function loadDriverFixture(raceKey: string, driver: string): Promise<DriverFixture> {
-  return fetchKey(fixtureKey(raceKey, driver)) as Promise<DriverFixture>;
+export function loadDriverFixture(
+  raceKey: string,
+  driver: string,
+  stopLap: number,
+): Promise<DriverFixture> {
+  return fetchKey(fixtureKey(raceKey, driver, stopLap)) as Promise<DriverFixture>;
+}
+
+/**
+ * Cause codes as stored in `decisionSpace`. Kept as integers there because the
+ * summary carries one per candidate across the whole field.
+ */
+export const CAUSE_BY_CODE = [
+  null,
+  "extrapolation",
+  "traffic",
+  "degenerateFit",
+  "unexplained",
+] as const;
+
+export type SummaryCandidate = {
+  newLap: number;
+  finalDeltaS: number;
+  extrapolatedLaps: number;
+  cause: (typeof CAUSE_BY_CODE)[number];
+};
+
+/** Expand one driver-stop's summary rows. */
+export function toSummary(
+  rows: [number, number, number, number][] | undefined,
+): SummaryCandidate[] {
+  return (rows ?? []).map(([newLap, finalDeltaS, extrapolatedLaps, code]) => ({
+    newLap,
+    finalDeltaS,
+    extrapolatedLaps,
+    cause: CAUSE_BY_CODE[code] ?? null,
+  }));
 }
 
 /** Already-resolved fixtures, for tests and cache assertions. */

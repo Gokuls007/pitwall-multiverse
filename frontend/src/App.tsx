@@ -27,15 +27,18 @@ import DecisionPanel, {
 } from "./components/DecisionPanel";
 import GapChart, { type GapPoint } from "./components/GapChart";
 import LapAxisPanes from "./components/LapAxisPanes";
+import DecisionSpace from "./components/DecisionSpace";
 import LapPlayhead from "./components/LapPlayhead";
 import StrategyTimeline, { type StintRun } from "./components/StrategyTimeline";
 import {
   availableDrivers,
   availableRaces,
+  availableStops,
   loadDriverFixture,
   loadRaceBase,
   pickOpeningCandidate,
   positionAtLap,
+  toSummary,
   toActualPoints,
   toDeltaPoints,
   toSeedPoints,
@@ -121,19 +124,6 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [raceKey]);
 
-  /** Exactly one fetch per driver — the Phase 6.2 acceptance criterion. */
-  useEffect(() => {
-    if (!driver) return;
-    let live = true;
-    setFixture(null);
-    loadDriverFixture(raceKey, driver)
-      .then((f) => live && setFixture(f))
-      .catch((e: Error) => live && setError(e.message));
-    return () => {
-      live = false;
-    };
-  }, [raceKey, driver]);
-
   /**
    * Which real pit stop is being moved. A driver has one candidate set per real
    * stop (VER at Hungary has two: laps 25 and 67), and they are separate
@@ -141,32 +131,55 @@ export default function App() {
    * would put non-adjacent laps next to each other and make the extrapolation
    * curve meaningless.
    */
+  // From the file listing rather than from a loaded fixture: files are keyed per
+  // (driver, stop), so which stops exist is known before anything is fetched —
+  // which is what lets the stop selector render without a round trip.
   const stopLaps = useMemo(
-    () => [...new Set((fixture?.candidates ?? []).map((c) => c.originalLap))].sort((a, b) => a - b),
-    [fixture],
+    () => (driver ? availableStops(raceKey, driver) : []),
+    [raceKey, driver],
   );
-  const [stopLap, setStopLap] = useState<number | null>(null);
-  useEffect(() => {
-    if (!stopLaps.length) {
-      setStopLap(null);
-      return;
-    }
-    // Default to a stop that has at least one counterfactual inside the
-    // model's evidence, so the view opens on something defensible. VER at
-    // Hungary has two stops and only the first (lap 25) qualifies: every way
-    // of moving the lap-67 stop leans on a SOFT cell fitted from two laps.
+  /**
+   * The stop being moved: the user's choice if it is valid for this driver,
+   * otherwise a default.
+   *
+   * Derived synchronously rather than held in state and set from an effect. The
+   * effect version briefly left `stopLap` holding the *previous* driver's stop
+   * after a driver change, and the fetch effect fired on that intermediate value
+   * — so switching driver cost two requests, one of them for a decision nobody
+   * had asked to see. Deriving it means there is exactly one value per render and
+   * no intermediate to fetch.
+   */
+  const [chosenStopLap, setChosenStopLap] = useState<number | null>(null);
+  const stopLap = useMemo(() => {
+    if (!stopLaps.length) return null;
+    if (chosenStopLap != null && stopLaps.includes(chosenStopLap)) return chosenStopLap;
+    // Default to a stop that has a counterfactual inside the model's evidence,
+    // read from the base file's decision-space summary so no candidate file has
+    // to be fetched to make the choice.
+    const summary = base?.decisionSpace?.[driver] ?? {};
     const usable = stopLaps.filter((lap) =>
-      (fixture?.candidates ?? []).some(
-        (c) =>
-          c.originalLap === lap &&
-          !c.isReal &&
-          c.extrapolatedLaps === 0 &&
-          !c.plausibility.restsOnDegenerateFit,
-      ),
+      toSummary(summary[String(lap)]).some((c) => c.newLap !== lap && c.extrapolatedLaps === 0),
     );
     const pool = usable.length ? usable : stopLaps;
-    setStopLap(pool[pool.length - 1]);
-  }, [stopLaps, fixture]);
+    return pool[pool.length - 1];
+  }, [stopLaps, chosenStopLap, base, driver]);
+
+  /**
+   * Exactly one fetch per (driver, stop) — the Phase 6.2 criterion, tightened in
+   * 6.5. Files were per driver, so a two-stop driver downloaded both stops'
+   * candidate sets to show one.
+   */
+  useEffect(() => {
+    if (!driver || stopLap == null) return;
+    let live = true;
+    setFixture(null);
+    loadDriverFixture(raceKey, driver, stopLap)
+      .then((f) => live && setFixture(f))
+      .catch((e: Error) => live && setError(e.message));
+    return () => {
+      live = false;
+    };
+  }, [raceKey, driver, stopLap]);
 
   // A playhead lap only means something relative to a particular race, driver and
   // decision; carrying it across a change would show "the order on lap 47" of a
@@ -175,11 +188,9 @@ export default function App() {
     setPlayheadLap(null);
   }, [raceKey, driver, stopLap]);
 
+  // The loaded file IS one stop's candidates, already sorted by the generator.
   const stopCandidates = useMemo(
-    () =>
-      (fixture?.candidates ?? [])
-        .filter((c) => c.originalLap === stopLap)
-        .sort((a, b) => a.newLap - b.newLap),
+    () => (fixture?.meta.stopLap === stopLap ? fixture.candidates : []),
     [fixture, stopLap],
   );
 
@@ -554,7 +565,7 @@ export default function App() {
             <span className="label-caps">Stop to move</span>
             <select
               value={stopLap ?? ""}
-              onChange={(e) => setStopLap(Number(e.target.value))}
+              onChange={(e) => setChosenStopLap(Number(e.target.value))}
               className="border border-rule bg-paper px-2 py-1 font-mono text-sm"
             >
               {stopLaps.map((lap, i) => (
@@ -825,6 +836,26 @@ export default function App() {
           focusDriver={driver}
           nRuns={nSeeds}
           atLap={orderAtPlayhead}
+        />
+      )}
+
+      {base && (
+        <DecisionSpace
+          base={base}
+          drivers={base.drivers
+            .filter((d) => d.hasCandidates)
+            .sort((a, b) => (a.finishPosition ?? 99) - (b.finishPosition ?? 99))
+            .map((d) => d.code)}
+          selected={
+            driver && stopLap != null && previewLap != null
+              ? { driver, stopLap, newLap: previewLap }
+              : undefined
+          }
+          onSelect={(nextDriver, nextStop, nextLap) => {
+            setDriver(nextDriver);
+            setChosenStopLap(nextStop);
+            setPreviewLap(nextLap);
+          }}
         />
       )}
 

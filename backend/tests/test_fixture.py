@@ -120,25 +120,22 @@ def test_every_driver_file_has_the_required_shape():
         payload = json.loads(path.read_text(encoding="utf-8"))
         meta, candidates = payload["meta"], payload["candidates"]
         assert meta["driver"] and meta["raceKey"], path.name
-        assert path.name == f"{meta['raceKey']}__{meta['driver']}.json"
+        # One file per (driver, STOP): the UI shows one stop at a time, so a
+        # two-stop driver was downloading twice what was displayed.
+        assert path.name == f"{meta['raceKey']}__{meta['driver']}__s{meta['stopLap']}.json"
+        assert {c["originalLap"] for c in candidates} == {meta["stopLap"]}, (
+            f"{path.name}: candidates for a stop this file does not name"
+        )
         assert meta["realPitLaps"], f"{path.name}: eligible drivers must have a real stop"
         assert candidates, f"{path.name}: no candidates generated"
 
-        # At least one candidate reproduces reality, and never more than one per
-        # real stop. Deliberately NOT "exactly one per stop": a final stop with
-        # no following stint cannot be shifted, and the engine correctly refuses.
-        # RIC's 2019 Australian GP is the real case — he pitted on lap 1 for a
-        # new front wing and then retired with damage on lap 29, so that second
-        # in-lap IS the retirement and there is nothing after it to move
-        # relative to. An earlier version of this test asserted one-per-stop and
-        # failed on exactly that, which is the test being wrong rather than the
-        # data.
+        # Now that a file is exactly one stop, at most one candidate in it can
+        # reproduce reality. Still not "exactly one": a final stop with no
+        # following stint cannot be shifted and the engine correctly refuses —
+        # 2019 Australian RIC pitted on lap 1 for a new front wing and then
+        # retired with damage on lap 29, so that second in-lap IS the retirement.
         real_marked = [c for c in candidates if c["isReal"]]
-        assert real_marked, f"{path.name}: no candidate reproduces reality"
-        assert len(real_marked) <= len(meta["realPitLaps"]), path.name
-        assert len({c["originalLap"] for c in real_marked}) == len(real_marked), (
-            f"{path.name}: more than one real-marked candidate for the same stop"
-        )
+        assert len(real_marked) <= 1, f"{path.name}: {len(real_marked)} reality-reproducing candidates"
         for candidate in candidates:
             assert candidate["deltaVsSimulatedReal"], f"{path.name}: candidate has no delta trace"
             assert candidate["classification"], f"{path.name}: candidate has no distribution"

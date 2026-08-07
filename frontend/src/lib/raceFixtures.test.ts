@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   availableDrivers,
   availableRaces,
+  availableStops,
   cachedKeys,
   fixtureKey,
   loadDriverFixture,
@@ -21,6 +22,9 @@ import {
  */
 
 const originalFetch = globalThis.fetch;
+
+/** A real stop for a driver no other test touches, so the cache starts cold. */
+const MEX_LEC_STOP = availableStops("2019_mexican", "LEC")[0];
 
 function stubFetch() {
   const spy = vi.fn(async () => ({
@@ -57,17 +61,17 @@ describe("per-driver fixture loading", () => {
   it("fetches exactly one file per driver, and caches it", async () => {
     const spy = stubFetch();
     // A key not touched by other tests, so the module-level cache is cold.
-    await loadDriverFixture("2019_mexican", "LEC");
+    await loadDriverFixture("2019_mexican", "LEC", MEX_LEC_STOP);
     expect(spy).toHaveBeenCalledTimes(1);
 
-    await loadDriverFixture("2019_mexican", "LEC");
+    await loadDriverFixture("2019_mexican", "LEC", MEX_LEC_STOP);
     expect(spy).toHaveBeenCalledTimes(1); // served from cache, not re-fetched
-    expect(cachedKeys()).toContain(fixtureKey("2019_mexican", "LEC"));
+    expect(cachedKeys()).toContain(fixtureKey("2019_mexican", "LEC", MEX_LEC_STOP));
   });
 
   it("rejects an unknown driver without fetching", async () => {
     const spy = stubFetch();
-    await expect(loadDriverFixture("2019_hungarian", "ZZZ")).rejects.toThrow(/no precomputed fixture/);
+    await expect(loadDriverFixture("2019_hungarian", "ZZZ", 1)).rejects.toThrow(/no precomputed fixture/);
     expect(spy).not.toHaveBeenCalled();
   });
 
