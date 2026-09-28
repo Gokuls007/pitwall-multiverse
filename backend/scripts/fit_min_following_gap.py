@@ -73,6 +73,8 @@ def main() -> None:
             "  MISMATCH: differs from the constant by more than 0.05 — update "
             "position.MIN_FOLLOWING_GAP_S (and its comment) to match, or explain the divergence."
         )
+        # Non-zero exit on drift, so "fails loudly" holds for scripts and CI.
+        sys.exit(1)
     else:
         print("  Consistent with the pooled fit (within 0.05).")
 

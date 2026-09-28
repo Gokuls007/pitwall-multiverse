@@ -126,20 +126,28 @@ def noise_s(rng: np.random.Generator, pace_std_s: float) -> float:
 # prediction) between consecutive laps *within the same stint* (a stint
 # boundary resets tyre/compound state, so residuals either side of one
 # aren't the same persistence process). Pooled across all 5 catalogue
-# races, 5,373 consecutive-lap pairs: phi = 0.622. See
+# races, 5,373 consecutive-lap pairs: phi = 0.509. See
 # `scripts/fit_noise_autocorrelation.py` for the exact computation.
+#
+# Refitted from 0.622. Part of that persistence was not noise at all: when a
+# driver's own degradation slope was rejected and replaced by a pooled one,
+# the compound offset fitted alongside the rejected slope was kept, so that
+# stint's residuals carried a shared bias of (pooled - own) * mean_age, which
+# reads as lap-to-lap autocorrelation. Refitting the offset around the
+# replacement slope (`tyre.fit_driver_final`) removed it. This is the
+# 'autocorrelation absorbs missing regressors' caveat, measured once.
 #
 # This also means an earlier claim in this codebase was backwards: positive
 # autocorrelation *increases* cumulative variance relative to iid, it
 # doesn't dampen it. For a stationary AR(1) process summed over n laps,
-# Var(sum) ~= n * sigma^2 * (1+phi)/(1-phi) for large n — at phi=0.622 that
-# factor is ~4.3, i.e. ~2.1x the iid standard deviation over the same
+# Var(sum) ~= n * sigma^2 * (1+phi)/(1-phi) for large n — at phi=0.509 that
+# factor is ~3.1, i.e. ~1.75x the iid standard deviation over the same
 # number of laps, not less. The correction is still the right one (real
 # lap-time scatter is measurably persistent, and modelling it as iid is
 # simply wrong), but it was adopted for the wrong stated reason — see
 # DECISIONS.md for the retraction and what it changes about how the
 # counterfactual ensemble's drift should be read.
-AR1_PHI = 0.622
+AR1_PHI = 0.509
 
 
 def ar1_noise_s(rng: np.random.Generator, pace_std_s: float, prev_noise_s: float, phi: float = AR1_PHI) -> float:

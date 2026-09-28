@@ -177,6 +177,48 @@ def test_pooling_fallback_used_for_sparse_driver_compound(rng):
     assert any("HARD" in note and "insufficient" in note.lower() for note in fit.notes)
 
 
+def test_replaced_slope_gets_an_offset_fitted_around_it(rng):
+    """When a driver's own slope is implausible and a pooled one is used
+    instead, the compound offset must be refitted with that slope held fixed.
+    Swapping the slope in afterwards kept the offset fitted alongside the
+    rejected slope, so the replaced compound's predicted pace sat
+    `(pooled - own) * mean_age` away from its own laps across the whole stint
+    (0.3-0.6 s/lap on several 2019 Australia cells, enough to flip the
+    simulated winner)."""
+    fuel = 0.06
+    laps = _synthetic_driver_laps(
+        rng,
+        base_pace_s=90.0,
+        fuel_effect_s_per_lap=fuel,
+        compound_offsets={"SOFT": -0.4, "MEDIUM": 0.0},
+        # A negative SOFT slope: physically impossible, so the fitter must
+        # reject it and use the pooled 0.05 below.
+        compound_slopes={"SOFT": -0.04, "MEDIUM": 0.05},
+        stints=[("SOFT", 14), ("MEDIUM", 30)],
+    )
+    pooled = {
+        Compound.SOFT: tyre.PooledCompoundFit(
+            offset=-0.4, slope=0.05, r_squared=0.5, n_observations=100, n_drivers=5
+        )
+    }
+    base_pace, _, models, _, provenance = tyre.fit_driver_final(laps, fuel, pooled)
+
+    assert provenance[Compound.SOFT].provenance == "pooled_implausible"
+    assert models[Compound.SOFT].linear_deg_s_per_lap == pytest.approx(0.05)
+    soft = laps[laps["Compound"] == "SOFT"]
+    predicted = (
+        base_pace
+        + models[Compound.SOFT].base_offset_s
+        + np.array([models[Compound.SOFT].degradation_s(int(a)) for a in soft["TyreAge"]])
+        - fuel * soft["LapNumber"].to_numpy()
+    )
+    mean_residual = float(np.mean(soft["LapTimeSeconds"].to_numpy() - predicted))
+    assert abs(mean_residual) < 0.02
+    # The untouched compound keeps its own, correct slope.
+    assert provenance[Compound.MEDIUM].provenance == "own_fit"
+    assert models[Compound.MEDIUM].linear_deg_s_per_lap == pytest.approx(0.05, abs=0.005)
+
+
 def test_fuel_effect_aggregation_clips_negative_and_records_fallback():
     """If every driver's own fuel estimate comes out non-positive (degenerate
     input), the race-level fuel effect must be clipped to a documented

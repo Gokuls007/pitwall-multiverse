@@ -35,7 +35,7 @@ reported, but as a footnote to the closing trajectory, not as the headline.
 
 There's an uncomfortable corollary the project reports rather than hides: simulated
 overtakes are driven by the tail of the pace-noise distribution, and that noise model
-(`AR1_PHI = 0.622`) is unexplained persistence absorbing whatever regressors the pace model
+(`AR1_PHI = 0.509`) is unexplained persistence absorbing whatever regressors the pace model
 is missing. So **a better pace model would produce fewer simulated overtakes.** The win
 fraction partly measures model ignorance.
 
@@ -83,16 +83,16 @@ truncated tail (192 stint-cells):
 
 | | In-sample | **Held-out** |
 |---|---|---|
-| Mean MAE | 0.640s | **0.796s** |
-| Median MAE | 0.453s | **0.540s** |
-| Cells under 0.5s | — | **47.4%** (91/192) |
+| Mean MAE | 0.552s | **0.789s** |
+| Median MAE | 0.391s | **0.549s** |
+| Cells under 0.5s | — | **41.1%** (79/192) |
 
 A real but modest degradation. Reproduce: `python backend/scripts/held_out_check.py`.
 
-**Stated without the flattering half:** the held-out median (0.540s) clears the revised
-0.6s figure, but only **47.4% of stint-cells fall under the original 0.5s — not a
+**Stated without the flattering half:** the held-out median (0.549s) clears the revised
+0.6s figure, but only **41.1% of stint-cells fall under the original 0.5s — not a
 majority**, so the held-out result does *not* clear §8.3 as originally written. Quoting
-"0.54s" alone would be picking the better of a pair; the mean is 0.796s. Note also that
+"0.55s" alone would be picking the better of a pair; the mean is 0.789s. Note also that
 these are different units from the gate's own criterion, which is per *driver* rather than
 per driver-stint cell — so the two are directionally comparable, not interchangeable.
 
@@ -105,10 +105,10 @@ unrelated to extrapolation quality.
 
 | Race | Winner | Within 1 pos. | Rank corr. | Open-loop MAE (in-sample) |
 |---|---|---|---|---|
-| 2019 Hungarian | HAM ✓ (90%) | 65.8% | 0.944 | 0.537s |
-| 2019 Mexican | HAM ✓ (100%) | 83.3% | 0.948 | 0.493s |
-| 2019 Australian | BOT ✓ (100%) | 58.8% | 0.897 | 0.580s |
-| 2021 Spanish | HAM ✓ (80%) | 63.2% | 0.955 | 0.469s |
+| 2019 Hungarian | HAM ✓ (100%) | 73.7% | 0.953 | 0.472s |
+| 2019 Mexican | HAM ✓ (100%) | 66.7% | 0.944 | 0.420s |
+| 2019 Australian | BOT ✓ (100%) | 58.8% | 0.884 | 0.534s |
+| 2021 Spanish | HAM ✓ (100%) | 63.2% | 0.959 | 0.469s |
 
 **2019 Monaco is excluded from the pass/fail aggregate** (still fitted, simulated and fully
 reported). It is the outlier on every metric measured and has roughly double the
@@ -166,7 +166,7 @@ exactly the situation an early-pit counterfactual creates. Read the traffic comp
 result with that in mind.
 
 **A concrete miss, since a general caveat is cheaper than an example.** In the Hungary
-counterfactual, Bottas really finished P8 — the model puts him at P10 in 83% of its 60
+counterfactual, Bottas really finished P8 — the model puts him at P10 in 73% of its 60
 runs. It is not uncertain about him; it is *confidently wrong*. The Classification panel
 shows the full spread per driver rather than one alternate order specifically so that
 distinction is visible: a tight distribution in the wrong place looks different from a
@@ -190,7 +190,7 @@ claim is narrower than it sounds, so here it is in full.
 | `pit_lane_loss_s` | **Fitted** from real in/out-lap timing (downstream of the pace model, so it inherits its bias) |
 | `dirty_air` | **Fitted** from pooled cross-race residuals: max penalty 1.290s [0.846, 1.850], decay 0.864s [0.564, 1.494] (clustered bootstrap) |
 | `overtake_difficulty` | **Fitted**, acknowledged noisy single-race estimate |
-| `AR1_PHI` (noise autocorrelation) | **Fitted** 0.622 from 5,373 consecutive-lap residual pairs — but autocorrelation absorbs missing regressors, so treat as an upper bound |
+| `AR1_PHI` (noise autocorrelation) | **Fitted** 0.509 from 5,373 consecutive-lap residual pairs — but autocorrelation absorbs missing regressors, so treat as an upper bound |
 | `MIN_FOLLOWING_GAP_S` | **Fitted** 0.580s (5th percentile of 5,435 observed real gaps) |
 | `sc` / `vsc` multipliers | **Fitted** only on races that had such a period; prior otherwise |
 | `pit_stop_stationary_s` | **Prior** (2.4s) — not separable from transit loss without telemetry |
@@ -249,10 +249,11 @@ parameter it depended on had already been refitted; that class of error is now i
 rather than merely discouraged.
 
 **6. Most pit calls were roughly right — and that is the tool's actual answer.** Across
-2019 Hungary's 1,580 candidate decisions, exactly **two of twenty drivers** had an
+2019 Hungary's 1,499 candidate decisions, exactly **two of twenty drivers** had an
 alternative worth more than a couple of seconds that the model can also defend (Bottas,
-−16.8s from stopping on lap 8 rather than 5; Russell, −9.8s from lap 15 rather than 16).
-Eighteen sit between −1.1s and +3.0s. The arguments fans have about pit timing are, on this
+−26.2s from stopping on lap 8 rather than 5; Russell, −13.2s from lap 15 rather than 16).
+Seventeen sit between −0.1s and +3.0s, and Hamilton's best defensible move costs time
+(+14.3s) rather than gaining any. The arguments fans have about pit timing are, on this
 evidence, mostly arguments about noise.
 
 That result needs **both halves of this project**, which is why it isn't available elsewhere.
@@ -261,7 +262,7 @@ being defensible gives you the answer. Either alone tells you nothing: a tool th
 every alternative without validation produces twenty confident results, and a validated
 simulator that only answers one question at a time never sees the distribution.
 
-**7. Only 3% of the decision space is inside the model's own evidence.** 53 of those 1,580
+**7. Only 3.5% of the decision space is inside the model's own evidence.** 53 of those 1,499
 candidates keep every stint within a tyre age the driver actually reached. The rest
 extrapolate, and the interface says so per candidate rather than in a footnote. The *width*
 of the defensible region is itself a per-driver property: Hamilton has 14 defensible
@@ -402,7 +403,7 @@ docker compose up web                  # http://localhost:8080
 # Backend
 python -m pip install -r backend/requirements.txt
 cd backend
-python -m pytest                       # 192 tests
+python -m pytest                       # 193 tests
 python scripts/run_validation.py       # regenerates VALIDATION.md
 python scripts/held_out_check.py       # held-out extrapolation check
 python scripts/build_fixtures.py       # regenerates all 138 fixtures (~12 min)
@@ -451,8 +452,8 @@ with every retraction preserved in place rather than edited away:
 `backend/scripts/build_fixtures.py` precomputes the *entire* decision space through the same
 pipeline functions the API would call: **7,393 candidate decisions across 5 races and 133
 driver-stops, 443,580 simulations, in 13 minutes on 10 workers**, written as 138 files
-totalling 30.5MB. Selecting a race fetches one base file (45–64KB); selecting a driver-stop
-fetches exactly one candidate file (median 249KB, max 466KB). Moving the pit stop costs no
+totalling 30.5MB. Selecting a race fetches one base file (44–60KB); selecting a driver-stop
+fetches exactly one candidate file (median 228KB, max 471KB). Moving the pit stop costs no
 network at all — every candidate's ensemble is already open.
 
 So the API would add exactly one thing: an ensemble for a decision type that isn't

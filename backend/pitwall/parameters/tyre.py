@@ -455,23 +455,90 @@ def fit_driver_final(
     reference = counts.idxmax()
     eligible = [c for c in present if counts[c] >= min_samples_per_compound]
 
-    columns = ["const"]
-    X_parts = [np.ones(len(laps))]
-    for c in eligible:
-        columns.append(f"age_{c}")
-        X_parts.append(np.where(laps["Compound"] == c, laps["TyreAge"].to_numpy(dtype=float), 0.0))
-    for c in present:
-        if c != reference:
-            columns.append(f"dummy_{c}")
-            X_parts.append((laps["Compound"] == c).to_numpy(dtype=float))
-
-    X = np.column_stack(X_parts)
     y = laps["FuelAdjusted"].to_numpy(dtype=float)
-    coef, _, _, _ = np.linalg.lstsq(X, y, rcond=None)
-    coef_by_col = dict(zip(columns, coef, strict=True))
+    age_by_compound = {
+        c: np.where(laps["Compound"] == c, laps["TyreAge"].to_numpy(dtype=float), 0.0) for c in eligible
+    }
+
+    def _solve(fixed: dict[str, float]) -> tuple[dict[str, float], np.ndarray]:
+        """Joint lstsq with any `fixed` compound slopes moved onto the left-hand
+        side, so base pace and every offset are fitted *consistently with* the
+        slope that will actually be used. Returns (coef_by_col, residual)."""
+        columns = ["const"]
+        X_parts = [np.ones(len(laps))]
+        target = y.copy()
+        for c in eligible:
+            if c in fixed:
+                target = target - fixed[c] * age_by_compound[c]
+            else:
+                columns.append(f"age_{c}")
+                X_parts.append(age_by_compound[c])
+        for c in present:
+            if c != reference:
+                columns.append(f"dummy_{c}")
+                X_parts.append((laps["Compound"] == c).to_numpy(dtype=float))
+        X = np.column_stack(X_parts)
+        coef, _, _, _ = np.linalg.lstsq(X, target, rcond=None)
+        return dict(zip(columns, coef, strict=True)), target - X @ coef
+
+    coef_by_col, residual = _solve({})
+    raw_own_slopes = {c: float(coef_by_col[f"age_{c}"]) for c in eligible}
+
+    # Spec 6.3: "degradation rates should be positive... if a fit violates
+    # these, treat it as a data or method bug, not a discovery. Log it
+    # loudly." Out-of-bounds is common on noisy small samples (low r2) or
+    # near-degenerate fits — this driver's own slope estimate is simply wrong
+    # (sign or magnitude), not a real discovery. Prefer the cross-driver
+    # pooled estimate for *this* compound if it's physically sensible, else
+    # the catalogue-wide pooled slope.
+    #
+    # The replacement slope is then held FIXED and the regression re-solved.
+    # Swapping the slope after the fact, as this used to, kept the offset and
+    # base pace that had been fitted *alongside the rejected slope*: the
+    # offset absorbs `own_slope * mean_age` of that compound's laps, so
+    # replacing, say, -0.03 s/lap with +0.047 s/lap over a stint averaging
+    # age 12 left that compound's predicted pace ~0.9s/lap off its own data
+    # across the whole stint. Re-solving can move another compound's own slope
+    # out of bounds in turn, so this repeats until nothing new is replaced.
+    fixed_slopes: dict[str, float] = {}
+    fixed_reason: dict[str, tuple[str, str]] = {}
+    for _ in range(len(eligible)):
+        newly_fixed = False
+        for c in eligible:
+            if c in fixed_slopes:
+                continue
+            own = float(coef_by_col[f"age_{c}"])
+            if 0 <= own <= MAX_PLAUSIBLE_SLOPE_S_PER_LAP:
+                continue
+            pooled_fit = pooled.get(Compound(c))
+            if pooled_fit is not None and 0 <= pooled_fit.slope <= MAX_PLAUSIBLE_SLOPE_S_PER_LAP:
+                fixed_slopes[c] = pooled_fit.slope
+                fixed_reason[c] = (
+                    "pooled_implausible",
+                    f"{c}: this driver's own fit gave an implausible degradation slope "
+                    f"({own:.4f} s/lap, n={int(counts[c])}) — not physical; using the "
+                    f"cross-driver pooled slope ({pooled_fit.slope:.4f} s/lap, "
+                    f"{pooled_fit.n_drivers} drivers) instead, with offset and base pace "
+                    f"refitted around it.",
+                )
+            else:
+                catalogue_slope = _catalogue_pooled_slope(c)
+                fixed_slopes[c] = catalogue_slope
+                fixed_reason[c] = (
+                    "catalogue_pooled",
+                    f"{c}: this driver's own fit gave an implausible degradation slope "
+                    f"({own:.4f} s/lap, n={int(counts[c])}) and this race's pooled fallback "
+                    f"was unavailable too; using the catalogue-wide pooled slope "
+                    f"({catalogue_slope:.4f} s/lap), with offset and base pace refitted "
+                    f"around it. Wrong magnitude beats the physically impossible 0.0 this "
+                    f"used to default to.",
+                )
+            newly_fixed = True
+        if not newly_fixed:
+            break
+        coef_by_col, residual = _solve(fixed_slopes)
 
     base_pace_s = float(coef_by_col["const"])
-    residual = y - X @ coef
     pace_std_s = float(np.std(residual))
     sst = float(np.sum((y - y.mean()) ** 2))
 
@@ -484,51 +551,22 @@ def fit_driver_final(
         raw_own_slope: float | None = None
 
         if c in eligible:
-            linear_slope = float(coef_by_col[f"age_{c}"])
-            raw_own_slope = linear_slope
+            raw_own_slope = raw_own_slopes[c]
             compound_resid = residual[compound_mask]
-            ages = laps.loc[compound_mask, "TyreAge"].to_numpy(dtype=float)
             compound_sse = float(np.sum(compound_resid**2))
             r2 = 1.0 - compound_sse / sst if sst > 0 else 0.0
-            cliff_lap, cliff_slope, _ = _detect_cliff(ages, compound_resid + linear_slope * ages)
-            provenance = "own_fit"
-
-            # Spec 6.3: "degradation rates should be positive... if a fit violates
-            # these, treat it as a data or method bug, not a discovery. Log it
-            # loudly." Out-of-bounds is common on noisy small samples (low r2)
-            # or near-degenerate fits — this driver's own slope estimate is
-            # simply wrong (sign or magnitude), not a real discovery. Prefer the
-            # cross-driver pooled estimate for *this* compound if it's
-            # physically sensible; only default to flat (0.0) if no pooled
-            # estimate exists either.
-            implausible = linear_slope < 0 or linear_slope > MAX_PLAUSIBLE_SLOPE_S_PER_LAP
-            if implausible:
-                pooled_fit = pooled.get(Compound(c))
-                pooled_is_sensible = (
-                    pooled_fit is not None and 0 <= pooled_fit.slope <= MAX_PLAUSIBLE_SLOPE_S_PER_LAP
-                )
-                if pooled_is_sensible:
-                    notes.append(
-                        f"{c}: this driver's own fit gave an implausible degradation slope "
-                        f"({linear_slope:.4f} s/lap, r2={r2:.3f}, n={n_obs}) — not physical; "
-                        f"using the cross-driver pooled slope ({pooled_fit.slope:.4f} s/lap, "
-                        f"{pooled_fit.n_drivers} drivers) instead."
-                    )
-                    linear_slope = pooled_fit.slope
-                    cliff_lap, cliff_slope = None, None
-                    provenance = "pooled_implausible"
-                else:
-                    catalogue_slope = _catalogue_pooled_slope(c)
-                    notes.append(
-                        f"{c}: this driver's own fit gave an implausible degradation slope "
-                        f"({linear_slope:.4f} s/lap, r2={r2:.3f}, n={n_obs}) and this race's "
-                        f"pooled fallback was unavailable too; using the catalogue-wide pooled "
-                        f"slope ({catalogue_slope:.4f} s/lap). Wrong magnitude beats the "
-                        f"physically impossible 0.0 this used to default to."
-                    )
-                    linear_slope = catalogue_slope
-                    cliff_lap, cliff_slope = None, None
-                    provenance = "catalogue_pooled"
+            if c in fixed_slopes:
+                # Replaced (see the re-solve above): no cliff is fitted on a
+                # slope that isn't this driver's own.
+                linear_slope = fixed_slopes[c]
+                cliff_lap, cliff_slope = None, None
+                provenance, note = fixed_reason[c]
+                notes.append(note)
+            else:
+                linear_slope = float(coef_by_col[f"age_{c}"])
+                ages = laps.loc[compound_mask, "TyreAge"].to_numpy(dtype=float)
+                cliff_lap, cliff_slope, _ = _detect_cliff(ages, compound_resid + linear_slope * ages)
+                provenance = "own_fit"
         elif Compound(c) in pooled:
             pooled_fit = pooled[Compound(c)]
             linear_slope = pooled_fit.slope

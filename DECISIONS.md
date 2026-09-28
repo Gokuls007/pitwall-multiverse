@@ -3936,3 +3936,46 @@ Which is also the standing instruction for after the Pages toggle: **open the
 network tab on the live URL**, not only in CI. Four faults in this project were
 caught by looking at rendered output against source, and the live host is the one
 environment that has never been looked at.
+
+---
+
+## 2019 Australia regressed at the gate: a replaced slope kept the wrong offset
+
+**Found by re-running the gate, not by a test.** `run_validation.py` on `main`
+failed 2019 Australia (modal winner HAM, not BOT; 52.9% within one position
+against the 55% bar) while the committed VALIDATION.md, dated 2026-08-04, said
+it passed. `git bisect` from that commit (`fbe1534`) to `642719b^` put the change
+at `f4bf995` ("make a zero degradation rate unreachable"). That commit's
+simulation-side edits (common random numbers) don't reach the noise-off replay;
+the change came from the tyre fallback chain.
+
+**The cause is older than that commit; `f4bf995` only exposed it.**
+`tyre.fit_driver_final` fits base pace, compound offsets and slopes in one
+regression. When a driver's own slope came out implausible (negative), the slope
+was swapped for the pooled one *afterwards*, but the offset fitted alongside the
+rejected slope was kept. That offset absorbs `own_slope * mean_age` of the
+compound's laps, so a replacement shifts the compound's whole predicted level by
+`(pooled - own) * mean_age`. Before `f4bf995` the replacement was 0.0, close to
+the small negative own slopes, so the error was small. `f4bf995` made the
+replacement a realistic +0.039 to +0.047 s/lap, and at Australia seven cells were
+left with mean residuals of up to ~0.9 s/lap against their own laps (BOT, HAM,
+PER, SAI on SOFT; GAS, KVY, STR on MEDIUM), enough to flip the winner.
+
+**Fix:** the replacement slope is now held fixed and the regression re-solved,
+so offset and base pace are fitted around the slope the model actually uses.
+This repeats until no further own slope goes out of bounds. A synthetic test pins
+it (`test_replaced_slope_gets_an_offset_fitted_around_it`); it fails on the old
+code.
+
+**Result, same thresholds, nothing tuned:** all four gated races pass again
+(Australia: BOT 100%, 58.8% within one, rank correlation 0.884). The held-out mean
+error moved from 0.949s (at `642719b`) to 0.789s, and the committed catalogue
+slope priors are unchanged.
+
+**One fitted constant moved, and it's the one the README warned about.**
+`AR1_PHI` refits from 0.622 to **0.509**. Part of the "persistence" was the
+shared per-stint bias above, which reads as lap-to-lap autocorrelation. The
+README said autocorrelation absorbs missing regressors; this is that effect,
+measured once. The constant is updated, all fixtures are rebuilt, and both
+drift-guard scripts now exit non-zero on a mismatch instead of only printing
+one.

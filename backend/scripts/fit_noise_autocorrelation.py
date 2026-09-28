@@ -109,7 +109,8 @@ def main() -> None:
     print(f"Residual scatter for reference: std={prev_arr.std():.4f}s  mean={prev_arr.mean():+.4f}s")
     print()
     print(f"lap_time.AR1_PHI is currently {AR1_PHI}")
-    if abs(pooled_phi - AR1_PHI) > 0.05:
+    drifted = abs(pooled_phi - AR1_PHI) > 0.05
+    if drifted:
         print(
             f"  MISMATCH: pooled fit ({pooled_phi:.4f}) differs from the constant by more than 0.05 "
             "— update lap_time.AR1_PHI (and its comment) to match, or explain the divergence."
@@ -124,6 +125,10 @@ def main() -> None:
         "the iid standard deviation over the same number of laps. Positive autocorrelation "
         "INCREASES cumulative spread; it does not dampen it."
     )
+    # Non-zero exit on drift, so "fails loudly" holds for scripts and CI, not
+    # just for a human reading the output.
+    if drifted:
+        sys.exit(1)
 
 
 if __name__ == "__main__":

@@ -80,8 +80,8 @@ export default function MultiverseTree({
    * Symmetric log about zero.
    *
    * A linear axis here is the fourth time the y-scale has swallowed the signal in
-   * this project. On 2019 Hungary one branch reaches -16.8s while eighteen of the
-   * twenty sit between -1.1s and +3.0s, so a linear extent set by the outlier
+   * this project. On 2019 Hungary one branch reaches -26.2s while seventeen of the
+   * twenty sit between -0.1s and +3.0s, so a linear extent set by the outlier
    * gives the entire interesting cluster **12% of the axis** and the tree reads
    * as "one big branch and a smudge".
    *
