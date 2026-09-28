@@ -68,10 +68,12 @@ Regenerate `VALIDATION.md`:
 python backend/scripts/run_validation.py
 ```
 
-Run the API (after prefetch + fit):
+Run the API: not available. Phase 5 was deferred (see README "Status"), so
+`pitwall.api.main` does not exist; the frontend reads precomputed fixtures instead.
+Regenerate those with:
 
 ```bash
-python -m uvicorn pitwall.api.main:app --app-dir backend --reload
+python backend/scripts/build_fixtures.py
 ```
 
 Frontend:

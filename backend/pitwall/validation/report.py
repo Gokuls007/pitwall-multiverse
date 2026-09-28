@@ -239,13 +239,13 @@ def render_validation_md(race_summaries: dict[str, dict]) -> str:
                       f"not the spec 8.3 criterion; NOT the same statistic as the open-loop number above): "
                       f"{summary['lap_time_mae_green_flag_median_s']:.3f}s — drivers under "
                       f"{GREEN_FLAG_MAE_THRESHOLD_S}s: {summary['green_flag_mae_majority_fraction']:.1%}")
-        lines.append(f"- **Caveat (all races, not race-specific — see DECISIONS.md for the numbers and "
-                      f"derivation): the open-loop MAE above is in-sample** — these parameters were fitted "
-                      f"by minimizing residuals against these exact laps, so this measures fit quality, not "
-                      f"forward prediction. A leave-one-stint-out held-out check across the catalogue showed "
-                      f"materially worse held-out accuracy than in-sample. Every counterfactual answer is an "
-                      f"extrapolation (a tyre-age/lap-number combination that never occurred), so held-out "
-                      f"accuracy, not in-sample accuracy, is the relevant number for judging Phase 4 readiness.")
+        lines.append("- **Caveat (all races, not race-specific — see DECISIONS.md for the numbers and "
+                      "derivation): the open-loop MAE above is in-sample** — these parameters were fitted "
+                      "by minimizing residuals against these exact laps, so this measures fit quality, not "
+                      "forward prediction. A leave-one-stint-out held-out check across the catalogue showed "
+                      "materially worse held-out accuracy than in-sample. Every counterfactual answer is an "
+                      "extrapolation (a tyre-age/lap-number combination that never occurred), so held-out "
+                      "accuracy, not in-sample accuracy, is the relevant number for judging Phase 4 readiness.")
         lines.append(f"- All-laps lap-time MAE (median, closed-loop): {summary['lap_time_mae_all_median_s']:.3f}s")
         lines.append(f"- Gap-to-leader RMSE (median): {summary['gap_rmse_median_s']:.3f}s")
         lines.append(f"- Strategy direction match rate (median, pit stops): "

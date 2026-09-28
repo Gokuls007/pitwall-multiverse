@@ -9,14 +9,13 @@ real strategy).
 
 from __future__ import annotations
 
-import numpy as np
 import pytest
 
 from pitwall.domain.driver import DriverParams, TyreModel
 from pitwall.domain.enums import Compound
 from pitwall.domain.race import DirtyAirModel
 from pitwall.simulation import lap_time, overtake, position, safety_car
-from pitwall.simulation.rng import make_rng
+from pitwall.simulation.rng import DrawTable, make_rng
 
 
 def _tyre_model(compound=Compound.MEDIUM, offset=0.0, slope=0.05) -> TyreModel:
@@ -602,3 +601,17 @@ def test_engine_classification_positions_are_a_permutation():
     result = simulate_replay(snapshot, params, seed=1)
     positions = sorted(p for _driver, p in result.classification)
     assert positions == list(range(1, len(positions) + 1))
+
+
+def test_draw_table_fallback_is_neutral_for_uniform_channels():
+    # Outside the table (unknown driver, lap past the race) every channel
+    # falls back to its mean. For the uniform channels that is 0.5, not 0.0:
+    # a 0.0 roll is below every threshold, so it would make every pass
+    # succeed and every stop a slow stop.
+    draws = DrawTable(seed=1, drivers=["AAA"], total_laps=10)
+    for driver, lap in (("ZZZ", 3), ("AAA", 99), ("AAA", -1)):
+        assert draws.pace(driver, lap).normal(0.0, 1.0) == 0.0
+        assert draws.pit(driver, lap).normal(0.0, 1.0) == 0.0
+        assert draws.pit(driver, lap).random() == 0.5
+        assert draws.passing(driver, lap).random() == 0.5
+        assert not overtake.resolve_pass(draws.passing(driver, lap), 0.4)

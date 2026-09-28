@@ -402,7 +402,7 @@ docker compose up web                  # http://localhost:8080
 # Backend
 python -m pip install -r backend/requirements.txt
 cd backend
-python -m pytest                       # 186 tests
+python -m pytest                       # 192 tests
 python scripts/run_validation.py       # regenerates VALIDATION.md
 python scripts/held_out_check.py       # held-out extrapolation check
 python scripts/build_fixtures.py       # regenerates all 138 fixtures (~12 min)
@@ -449,9 +449,9 @@ with every retraction preserved in place rather than edited away:
 
 **The API was deferred deliberately, and the interaction loop is complete without it.**
 `backend/scripts/build_fixtures.py` precomputes the *entire* decision space through the same
-pipeline functions the API would call: **8,085 candidate decisions across 5 races and 133
-driver-stops, 485,100 simulations, in 12 minutes on 10 workers**, written as 138 files
-totalling 33.8MB. Selecting a race fetches one base file (45–64KB); selecting a driver-stop
+pipeline functions the API would call: **7,393 candidate decisions across 5 races and 133
+driver-stops, 443,580 simulations, in 13 minutes on 10 workers**, written as 138 files
+totalling 30.5MB. Selecting a race fetches one base file (45–64KB); selecting a driver-stop
 fetches exactly one candidate file (median 249KB, max 466KB). Moving the pit stop costs no
 network at all — every candidate's ensemble is already open.
 

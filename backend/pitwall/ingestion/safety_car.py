@@ -16,6 +16,7 @@ This confirms the code table in the spec:
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass
 from typing import Literal
 
@@ -28,6 +29,12 @@ logger = logging.getLogger(__name__)
 _SC_CODE = "4"
 _RED_CODE = "5"
 _VSC_CODES = ("6", "7")
+
+# Word-boundary regex, not a substring test: "CHEQUERED FLAG" contains the
+# literal substring "RED FLAG" (cheque-RED FLAG), so `"RED FLAG" in message`
+# turned every race's chequered-flag message into a red-flag start event.
+# Same fix as `scripts/screen_race.py`'s RED_FLAG_PATTERN.
+_RED_FLAG_PATTERN = re.compile(r"\bRED FLAG\b")
 
 
 def _codes(track_status: object) -> set[str]:
@@ -131,7 +138,7 @@ def _events_from_race_control(rc_messages: pd.DataFrame) -> list[_RaceControlEve
             events.append(_RaceControlEvent("SC", "start", lap))
         elif "SAFETY CAR IN THIS LAP" in message:
             events.append(_RaceControlEvent("SC", "end", lap))
-        elif "RED FLAG" in message:
+        elif _RED_FLAG_PATTERN.search(message):
             events.append(_RaceControlEvent("RED", "start", lap))
 
     return events

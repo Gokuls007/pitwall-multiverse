@@ -220,6 +220,28 @@ def _apply_change_pit_lap(snapshot: RaceSnapshot, decision: ChangePitLap) -> dic
     old_stint_start_age = old_stint_laps[0].tyre_life
     old_compound = original_in.compound
 
+    # Pulling a stop earlier is bounded by the start of the stint it ends.
+    # Without this, a `new_lap` before the *previous* real stop was accepted:
+    # the old stint's tyre-age progression was extrapolated backwards (ages of
+    # zero and below, e.g. 2019 Hungary HAM 48->1 ran lap 1 at tyre age -30)
+    # and the previous stop's in/out-lap flags were silently overwritten, so
+    # an earlier real stop vanished from the strategy. Every lap from `new_lap`
+    # up to the stop being moved must be an ordinary lap of the old stint.
+    if decision.new_lap < old_stint_start_lap:
+        raise ValueError(
+            f"{decision.driver}: lap {decision.new_lap} is before the stint ending at lap "
+            f"{decision.original_lap} began (lap {old_stint_start_lap}) — shifting a stop past "
+            "the preceding one isn't supported here."
+        )
+    for lap_number in range(decision.new_lap, decision.original_lap):
+        earlier = driver_laps.get(lap_number)
+        if earlier is not None and (earlier.is_in_lap or earlier.is_out_lap):
+            raise ValueError(
+                f"{decision.driver}: shifting lap {decision.original_lap} to {decision.new_lap} would "
+                f"overlap the preceding real pit sequence (lap {lap_number}) — "
+                "shifting a stop onto or past the preceding one isn't supported here."
+            )
+
     next_stint_laps = sorted(
         (lap for lap in driver_laps.values() if lap.stint == old_stint + 1), key=lambda lap: lap.lap_number
     )

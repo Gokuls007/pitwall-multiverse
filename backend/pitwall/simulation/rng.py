@@ -89,14 +89,17 @@ class DrawTable:
         self._pass_roll = np.random.default_rng(substreams[3]).random(shape)
         self._shape = shape
 
-    def _cell(self, array: np.ndarray, driver: str, lap: int) -> float:
+    def _cell(self, array: np.ndarray, driver: str, lap: int, default: float = 0.0) -> float:
         row = self._row.get(driver)
         if row is None or not (0 <= lap < self._shape[1]):
             # A driver or lap outside the table (synthetic data, or a lap past
-            # the race distance) falls back to a deterministic zero rather than
-            # raising: the alternative is a crash in a Monte Carlo run, and a
-            # zero draw is the mean of every channel here.
-            return 0.0
+            # the race distance) falls back to a deterministic draw at the
+            # channel's mean rather than raising: the alternative is a crash in
+            # a Monte Carlo run. That mean is 0 for the normal channels but 0.5
+            # for the uniform ones — a uniform of 0.0 is not neutral, it is
+            # "below every threshold", which would make every pass succeed and
+            # every stop a slow stop.
+            return default
         return float(array[row, lap])
 
     def pace(self, driver: str, lap: int) -> _NormalDraw:
@@ -108,7 +111,7 @@ class DrawTable:
         the slow-stop roll."""
         return _NormalDraw(
             z=self._cell(self._pit_noise, driver, lap),
-            u=self._cell(self._pit_slow, driver, lap),
+            u=self._cell(self._pit_slow, driver, lap, default=0.5),
         )
 
     def passing(self, driver: str, lap: int) -> _NormalDraw:
@@ -119,4 +122,4 @@ class DrawTable:
         attempt are mutually exclusive branches, and a car that has just been
         passed becomes `ahead` for the next comparison rather than rolling again.
         """
-        return _NormalDraw(z=0.0, u=self._cell(self._pass_roll, driver, lap))
+        return _NormalDraw(z=0.0, u=self._cell(self._pass_roll, driver, lap, default=0.5))

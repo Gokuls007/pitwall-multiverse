@@ -70,7 +70,7 @@ def main() -> None:
     print(f"position.MIN_FOLLOWING_GAP_S is currently {MIN_FOLLOWING_GAP_S}")
     if abs(fitted - MIN_FOLLOWING_GAP_S) > 0.05:
         print(
-            f"  MISMATCH: differs from the constant by more than 0.05 — update "
+            "  MISMATCH: differs from the constant by more than 0.05 — update "
             "position.MIN_FOLLOWING_GAP_S (and its comment) to match, or explain the divergence."
         )
     else:

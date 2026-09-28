@@ -123,16 +123,16 @@ describe("App", () => {
     render(<App />);
     await waitFor(() => expect(screen.getByText(/instead of lap/i)).toBeInTheDocument());
 
-    // VER's lap-67 stop dragged to lap 1: 69 laps on a compound he ran twice,
-    // so his own degradation is unfittable and the answer leans entirely on the
-    // cross-driver pooled estimate. This used to be far worse — before the
-    // degradation fallback chain was corrected, moving that stop to lap 40 alone
-    // read -52s, because the cell had fallen through to a rate of exactly zero.
-    // It now reads -16s and is inside the bound, which is why this test has to
-    // reach for a genuinely extreme candidate to find a live artifact.
+    // VER's lap-25 stop dragged to lap 1: a HARD stint run 24 laps past the
+    // oldest HARD he ever reached, well past the plausibility bound, and still
+    // finishing on the SOFT cell fitted from two laps, which leans on the
+    // cross-driver pooled estimate. (This test used to drag his lap-67 stop to
+    // lap 1, but that candidate was invalid: it moved the stop to before his
+    // lap-25 stop, erasing it and running tyre ages of zero and below.
+    // `apply_decision` now rejects it, so the earliest lap-67 candidate is 26.)
     await userEvent.selectOptions(screen.getByLabelText(/^driver$/i), "VER");
     await waitFor(() => expect(screen.getByLabelText(/stop to move/i)).toBeInTheDocument());
-    await userEvent.selectOptions(screen.getByLabelText(/stop to move/i), "67");
+    await userEvent.selectOptions(screen.getByLabelText(/stop to move/i), "25");
     // Phase 6.3 retired the range input; the control is the pit tick, driven
     // here by keyboard because jsdom has no real pointer geometry.
     await waitFor(() => expect(screen.getByTestId("pit-tick")).toBeInTheDocument());

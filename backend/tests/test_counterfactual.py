@@ -122,6 +122,32 @@ def test_apply_change_pit_lap_rejects_a_lap_that_was_not_a_real_stop(hungary_201
         apply_decision(snapshot, decision)
 
 
+@pytest.mark.parametrize("new_lap", [1, 20, 31, 32])
+def test_apply_change_pit_lap_rejects_moving_a_stop_onto_or_before_the_previous_one(hungary_2019, new_lap):
+    # HAM's real stops are laps 31 and 48. Pulling the second one back onto
+    # or before the first used to be accepted: the stint's tyre age was
+    # extrapolated backwards to zero and below (lap 1 at age -30) and the
+    # lap-31 stop was silently erased from the strategy.
+    snapshot, _ = hungary_2019
+    with pytest.raises(ValueError):
+        apply_decision(snapshot, ChangePitLap(driver="HAM", original_lap=48, new_lap=new_lap))
+
+
+def test_apply_change_pit_lap_keeps_every_tyre_age_positive_across_the_valid_range(hungary_2019):
+    snapshot, _ = hungary_2019
+    accepted = 0
+    for new_lap in range(1, snapshot.total_laps + 1):
+        try:
+            overrides = apply_decision(snapshot, ChangePitLap(driver="HAM", original_lap=48, new_lap=new_lap))
+        except ValueError:
+            continue
+        accepted += 1
+        assert all(record.tyre_life >= 1 for record in overrides.values()), new_lap
+        # The earlier real stop is outside the override range, so it survives.
+        assert ("HAM", 31) not in overrides
+    assert accepted > 0
+
+
 def test_change_pit_lap_earlier_shortens_first_stint_and_shifts_second(hungary_2019):
     # HAM's real first stop is lap 31 -> 32 (in/out), a clean single-lap
     # transition. Move it 3 laps earlier: stint 1 should now be 3 laps

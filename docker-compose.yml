@@ -46,8 +46,11 @@ services:
       - ./backend:/app/backend
       - ./frontend/src/fixtures:/app/frontend/src/fixtures
       # FastF1's HTTP cache: ingestion is the only step that touches the network,
-      # and it should not re-download a season on every run.
-      - fastf1-cache:/root/.fastf1
+      # and it should not re-download a season on every run. Mounted where
+      # `ingestion/cache.py` actually puts it (<repo>/data/cache, i.e.
+      # /app/data/cache in the image) — not FastF1's own default location,
+      # which the code never uses.
+      - fastf1-cache:/app/data/cache
     environment:
       PYTHONUNBUFFERED: "1"
     profiles: ["tools"]
